@@ -1,0 +1,35 @@
+name: "⚡ Profilage & Optimisation"
+description: "Profiler le pipeline (CPU/GPU), réduire la complexité, la mémoire et le temps d’exécution."
+title: "[DSP][Perf] "
+labels: ["Traitement", "Performance"]
+body:
+  - type: markdown
+    attributes:
+      value: "## ⚡ Profilage & Optimisation"
+  - type: textarea
+    id: cible
+    attributes:
+      label: "Cible"
+      description: "Fonction/module à optimiser (ex: FFT azimut, migration, interpolation)."
+    validations:
+      required: true
+  - type: textarea
+    id: mesures
+    attributes:
+      label: "Mesures actuelles"
+      description: "Temps, mémoire, flops, goulots, outils (time, cProfile, nvprof, Nsight…)."
+  - type: textarea
+    id: pistes
+    attributes:
+      label: "Pistes d’optimisation"
+      description: "Vectorisation, FFT size, overlap-save, streaming, batching, précision float, GPU."
+  - type: textarea
+    id: protocole
+    attributes:
+      label: "Protocole d’évaluation"
+      description: "Jeu de test, métriques, seuils de succès, répétabilité."
+  - type: textarea
+    id: impact
+    attributes:
+      label: "Impact attendu"
+      description: "Gain visé, risques qualité, régression potentielle."

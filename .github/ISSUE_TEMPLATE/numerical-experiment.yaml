@@ -1,0 +1,40 @@
+name: "🧪 Expérience numérique / Benchmark"
+description: "Définir et exécuter une expérience (campagne multi-paramètres, benchmark perf/qualité)."
+title: "[DSP][Exp] "
+labels: ["Traitement", "Expérience", "Benchmark"]
+body:
+  - type: markdown
+    attributes:
+      value: "## 🧪 Expérience numérique"
+  - type: textarea
+    id: scenario
+    attributes:
+      label: "Scénario"
+      description: "Hypothèses (radar fixe/mobile, trajectoire), objectifs, variables d’intérêt."
+    validations:
+      required: true
+  - type: textarea
+    id: params
+    attributes:
+      label: "Paramètres explorés"
+      description: "SNR, bande, PRF, vitesse, K-factor, taille image, fenêtre, etc."
+  - type: textarea
+    id: scripts
+    attributes:
+      label: "Scripts / Notebooks"
+      description: "Chemins, commandes (Makefile, CLI), seed aléatoire, artefacts générés."
+  - type: textarea
+    id: metriques
+    attributes:
+      label: "Métriques & critères"
+      description: "Qualité image (PSLR/ISLR/RES), stabilité, temps CPU/GPU, mémoire."
+  - type: textarea
+    id: results
+    attributes:
+      label: "Résultats & visualisations"
+      description: "Figures, tableaux, comparatifs, régression/perf."
+  - type: textarea
+    id: conclusion
+    attributes:
+      label: "Conclusion / Reco"
+      description: "Paramètres retenus, impact, suites proposées."

@@ -1,0 +1,42 @@
+name: "🔎 Validation d’une étape de traitement"
+description: "Vérifier la justesse d’un maillon (filtrage, compression, calibration, imagerie)."
+title: "[DSP][Validation] "
+labels: ["Traitement", "Validation"]
+body:
+  - type: markdown
+    attributes:
+      value: "## 🔎 Validation d’une étape"
+  - type: input
+    id: etape
+    attributes:
+      label: "Étape concernée"
+      description: "Ex: compression d’impulsion, azimut FFT, migration, géocodage, autofocus."
+    validations:
+      required: true
+  - type: textarea
+    id: dataset
+    attributes:
+      label: "Jeu(x) de données"
+      description: "Simulé, réel, taille, taux d’échantillonnage, géométrie, lien d’accès."
+    validations:
+      required: true
+  - type: textarea
+    id: attentes
+    attributes:
+      label: "Résultats attendus"
+      description: "Valeurs de référence, propriétés (PSLR/ISLR/cible point), figures cibles."
+  - type: textarea
+    id: obtenus
+    attributes:
+      label: "Résultats obtenus"
+      description: "Courbes/figures, stats, logs de tests."
+  - type: textarea
+    id: analyse
+    attributes:
+      label: "Analyse & écarts"
+      description: "Écarts quantifiés, hypothèses, pistes d’explication."
+  - type: textarea
+    id: actions
+    attributes:
+      label: "Actions correctives"
+      description: "Ajustements, recalage, modifications de paramètres/code."

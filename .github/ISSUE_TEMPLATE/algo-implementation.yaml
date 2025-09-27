@@ -1,0 +1,52 @@
+name: "🧠 Implémentation d’algorithme"
+description: "Ajouter/implémenter un nouvel algo de traitement (ex: compression d’impulsion, focale SAR, autofocus, filtres)."
+title: "[DSP][Algo] "
+labels: ["Traitement", "Algorithmie"]
+body:
+  - type: markdown
+    attributes:
+      value: "## 🧠 Implémentation d’algorithme"
+  - type: input
+    id: nom_algo
+    attributes:
+      label: "Nom / Référence de l’algo"
+      description: "Ex: Range-Doppler, Backprojection, Range Migration (RMA), CFAR, etc."
+    validations:
+      required: true
+  - type: textarea
+    id: objectif
+    attributes:
+      label: "🎯 Objectif"
+      description: "Ce que l’algo doit produire / améliorer (métrique ou propriété visée)."
+    validations:
+      required: true
+  - type: textarea
+    id: theorie
+    attributes:
+      label: "📚 Base théorique / formules"
+      description: "Références, équations clés, hypothèses (stationnarité, bande étroite, etc.)."
+  - type: textarea
+    id: io
+    attributes:
+      label: "📥 Entrées / 📤 Sorties"
+      description: "Format des données (I/Q, matrice range×azimut…), types, unités, conventions."
+  - type: textarea
+    id: validation
+    attributes:
+      label: "✅ Stratégie de validation"
+      description: "Métriques (PSLR, ISLR, RMSE, SNR, temps), jeux de données, tests unitaires prévus."
+  - type: textarea
+    id: plan
+    attributes:
+      label: "🛠️ Plan d’implémentation"
+      description: "Étapes, découpage en sous-tâches, modules/fichiers ciblés."
+  - type: textarea
+    id: risques
+    attributes:
+      label: "⚠️ Risques / points durs"
+      description: "Ex: complexité, mémoire, conditions d’aliasing, précision numérique."
+  - type: textarea
+    id: livrables
+    attributes:
+      label: "📦 Livrables attendus"
+      description: "Code, tests, doc, figures comparatives."

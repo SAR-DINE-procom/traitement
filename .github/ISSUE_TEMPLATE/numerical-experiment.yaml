@@ -1,6 +1,6 @@
 name: "🧪 Expérience numérique / Benchmark"
 description: "Définir et exécuter une expérience (campagne multi-paramètres, benchmark perf/qualité)."
-title: "[DSP][Exp] "
+title: "[TR][Exp] "
 labels: ["Traitement", "Expérience", "Benchmark"]
 body:
   - type: markdown

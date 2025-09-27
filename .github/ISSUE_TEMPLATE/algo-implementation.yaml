@@ -1,6 +1,6 @@
 name: "🧠 Implémentation d’algorithme"
 description: "Ajouter/implémenter un nouvel algo de traitement (ex: compression d’impulsion, focale SAR, autofocus, filtres)."
-title: "[DSP][Algo] "
+title: "[TR][Algo] "
 labels: ["Traitement", "Algorithmie"]
 body:
   - type: markdown

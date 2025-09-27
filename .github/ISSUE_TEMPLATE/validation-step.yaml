@@ -1,6 +1,6 @@
 name: "🔎 Validation d’une étape de traitement"
 description: "Vérifier la justesse d’un maillon (filtrage, compression, calibration, imagerie)."
-title: "[DSP][Validation] "
+title: "[TR][Validation] "
 labels: ["Traitement", "Validation"]
 body:
   - type: markdown

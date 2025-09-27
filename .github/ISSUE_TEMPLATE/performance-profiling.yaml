@@ -1,6 +1,6 @@
 name: "⚡ Profilage & Optimisation"
 description: "Profiler le pipeline (CPU/GPU), réduire la complexité, la mémoire et le temps d’exécution."
-title: "[DSP][Perf] "
+title: "[TR][Perf] "
 labels: ["Traitement", "Performance"]
 body:
   - type: markdown

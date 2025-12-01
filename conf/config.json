@@ -1,0 +1,22 @@
+{
+  "fc": 24e9,
+  "rangeResolution": 0.75,
+  "crossRangeResolution": 0.05,
+  "bw": 200e6,
+  "prf": 1000,
+  "aperture": 0.0064,
+  "tpd": 1e-7,
+  "fs": 400e6,
+  "speed": 0.5,
+  "flightDuration": 4,
+  "maxRange": 1000,
+  "motionErrors": [
+    0.0, 
+    0.0, 
+    0.0
+  ], 
+  "targetsPosition": [
+    [1.0, 1.0, 0.0],
+    [2.0, 1.5, 0.0]
+  ]
+}

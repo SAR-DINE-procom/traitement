@@ -89,22 +89,55 @@ function simulator(configPath)
         rxsig(:,ii) = receiver(sig);
     end
 
+    % --- Visualization: Raw Data ---
+    figure(3);
+    imagesc(real(rxsig));
+    title('Raw Radar Data (Real Part)');
+    xlabel('Pulse Index (Slow Time)');
+    ylabel('Fast Time Sample');
+    colorbar;
+
     % --- Signal Processing ---
     % 1. Pulse Compression
     pulseCompression = phased.RangeResponse('RangeMethod', 'Matched filter', 'PropagationSpeed', c, 'SampleRate', fs);
     matchingCoeff = getMatchedFilter(waveform);
     [cdata, rnggrid] = pulseCompression(rxsig, matchingCoeff);
 
+    % --- Visualization: Range Compressed Data ---
+    figure(4);
+    % Calcul de l'axe azimutal pour l'affichage
+    [~, numPulses] = size(cdata);
+    azimuthDist = (0:numPulses-1) * (speed/prf); 
+    
+    imagesc(azimuthDist, rnggrid, abs(cdata));
+    title('Range Compressed Data (Envelope)');
+    xlabel('Cross-Range (m)');
+    ylabel('Range (m)');
+    axis xy;
+    ylim([0 10]); % Zoom sur la zone proche (cibles)
+    colorbar;
+
     % 2. Backprojection Algorithm
     fastTime = (0:1/fs:(truncrangesamples-1)/fs);
+    
+    % Appel de la fonction modifiée
     bpa_processed = helperBackProjection(cdata, rnggrid, fastTime, fc, fs, prf, speed, crossRangeResolution, c);
 
     % --- Visualization ---
     figure(2);
+    
+    % Il faut recréer les axes utilisés dans helperBackProjection pour l'affichage
+    gridStep = 0.025;
+    rangeLims = [0 10];
+    crossRangeLims = [0 10];
+    
+    imgRangeAxis = rangeLims(1):gridStep:rangeLims(2);
+    imgCrossAxis = crossRangeLims(1):gridStep:crossRangeLims(2);
+    
     [~, numPulses] = size(cdata);
     azimuthDist = (0:numPulses-1) * (speed/prf); 
     
-    imagesc(azimuthDist, rnggrid, abs(bpa_processed));
+    imagesc(imgCrossAxis, imgRangeAxis, abs(bpa_processed));
     title('SAR Image (Backprojection)');
     xlabel('Cross-range (m)');
     ylabel('Range (m)');

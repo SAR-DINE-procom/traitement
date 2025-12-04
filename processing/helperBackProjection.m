@@ -2,72 +2,73 @@ function data = helperBackProjection(sigdata,rnggrid,fastTime,fc,fs,prf,speed,cr
     
     [~, numPulses] = size(sigdata);
     
-    % Reconstruction de l'axe azimutal basé sur la vitesse et le PRF
-    azimuthDist = (0:numPulses-1) * (speed/prf); 
+    % --- DEFINITION DE LA GRILLE SPATIALE (2.5 cm) ---
+    gridStep = 0.025; % 2.5 cm
     
-    % Initialisation
-    data = zeros(length(rnggrid), length(azimuthDist));
+    % Définition des limites de la zone à imager (en mètres)
+    % Vous pouvez ajuster ces bornes selon vos besoins
+    rangeLims = [0 10];       % De 0 à 10m en distance
+    crossRangeLims = [0 10];  % De 0 à 10m en azimut (ajustez selon la longueur du vol)
     
-    % Définition des zones à traiter (on peut ajuster selon besoin)
-    rangelims = [0 10]; 
-    crossrangelims = [-10 10];
-
-    rangeIdx =  [find(rnggrid>rangelims(1), 1) find(rnggrid<rangelims(2),1,'last')];
-    if isempty(rangeIdx), rangeIdx = [1 length(rnggrid)]; end
-
-    crossrangeIdxStart = find(azimuthDist>crossrangelims(1),1);
-    if isempty(crossrangeIdxStart), crossrangeIdxStart = 1; end
+    % Création des axes de la grille image
+    imageRangeAxis = rangeLims(1):gridStep:rangeLims(2);
+    imageCrossRangeAxis = crossRangeLims(1):gridStep:crossRangeLims(2);
     
-    crossrangeIdxStop = find(azimuthDist<crossrangelims(2),1,'last');
-    if isempty(crossrangeIdxStop), crossrangeIdxStop = length(azimuthDist); end
+    % Initialisation de l'image finale
+    data = zeros(length(imageRangeAxis), length(imageCrossRangeAxis));
+    
+    % Axe azimutal de la trajectoire radar (pour le calcul géométrique)
+    radarAzimuthPos = (0:numPulses-1) * (speed/prf); 
 
-    for i= rangeIdx(1):rangeIdx(2)
+    % --- BOUCLE DE RETROPROJECTION ---
+    % On itère sur chaque pixel de l'image finale
+    for i = 1:length(imageRangeAxis)
         
-        % 1. Calcul théorique de l'ouverture nécessaire (Physique OK)
-        R = c * fastTime(i) / 2;
-        lsynth = (c/fc) * R / (2*crossRangeResolution);
+        pixelRange = imageRangeAxis(i);
         
-        % Conversion en nombre d'échantillons
+        % Calcul de l'ouverture synthétique nécessaire pour ce pixel (Théorie)
+        lsynth = (c/fc) * pixelRange / (2*crossRangeResolution);
         lsar = round(lsynth / (speed/prf));
         lsar = lsar + mod(lsar,2); % Impair
-        
-        % Fenêtre de pondération
         hn = hanning(lsar).';
         
-        for j= crossrangeIdxStart:crossrangeIdxStop 
-            posx = azimuthDist(j);
-            posy = R;
+        for j = 1:length(imageCrossRangeAxis)
+            
+            pixelCrossRange = imageCrossRangeAxis(j);
+            
+            % Trouver l'index du radar le plus proche de la position azimutale du pixel
+            % (C'est le centre de l'ouverture synthétique)
+            [~, centerPulseIdx] = min(abs(radarAzimuthPos - pixelCrossRange));
+            
+            k_start = centerPulseIdx - floor(lsar/2);
+            k_end   = centerPulseIdx + floor(lsar/2);
+            
             count = 0;
             
-            % Calcul des bornes théoriques
-            k_start = round(j - lsar/2 + 1);
-            k_end   = round(j + lsar/2);
-            
-            % 2. Protection contre la réalité (Indices hors bornes)
+            % Sommation cohérente sur l'ouverture
             for k = k_start : k_end
-                
-                % EST-CE QUE LE RADAR ÉTAIT LÀ ?
                 if k >= 1 && k <= numPulses
+                    radarPosAtK = radarAzimuthPos(k);
                     
-                    % Oui, on calcule
-                    td = sqrt((azimuthDist(k) - posx)^2 + posy^2) * 2/c;
+                    % Distance aller-retour exacte entre le radar(k) et le pixel(i,j)
+                    distTwoWay = sqrt((radarPosAtK - pixelCrossRange)^2 + pixelRange^2) * 2;
+                    td = distTwoWay / c;
+                    
+                    % Conversion en index d'échantillon (Fast Time)
                     cell = round(td * fs) + 1;
                     
-                    % Est-ce que l'écho est dans la fenêtre d'écoute ?
                     if cell >= 1 && cell <= size(sigdata, 1)
                         signal = sigdata(cell, k);
-                        
-                        % Index correct pour la fenêtre de Hanning
                         h_idx = k - k_start + 1;
                         
-                        count = count + hn(h_idx) * signal * exp(1j*2*pi*fc*(td));
+                        % Matched Filter (Correction de phase)
+                        if h_idx >= 1 && h_idx <= length(hn)
+                            count = count + hn(h_idx) * signal * exp(1j * 2 * pi * fc * td);
+                        end
                     end
                 end
             end
-            
-            % Processed data at each of range and cross-range indices
-            data(i,j)= count;
+            data(i,j) = count;
         end
-        
     end
 end

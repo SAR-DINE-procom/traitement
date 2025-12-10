@@ -150,5 +150,47 @@ function simulator(configPath)
 
     % --- Export Data ---
     if ~exist('output', 'dir'), mkdir('output'); end
-    save('output/out.mat', 'cdata', 'real_path', 'ideal_path');
+    
+    % 1. Export standard .mat (pour Python/MATLAB)
+    save('output/out.mat', 'cdata', 'real_path', 'ideal_path', 'rxsig');
+
+    % 2. Export TDMS (Pour compatibilité NI DAQmx)
+    % Le format TDMS structure les données en Channel Groups et Channels.
+    % Pour un DAQmx, généralement : Group = "Analog Input", Channel = "ai0", "ai1"...
+    
+    tdmsFileName = 'output/simulation_raw.tdms';
+    
+    % Si vous avez MATLAB R2022a ou plus récent avec Data Acquisition Toolbox :
+    try
+        % On prépare les données : rxsig est [FastTime x SlowTime]
+        % DAQmx enregistre souvent en continu. On va linéariser ou sauver par pulse.
+        % Option A : Sauver tout le signal comme une seule trace continue (comme le ferait le DAQ)
+        raw_vector = rxsig(:); % Convertir la matrice en un long vecteur colonne
+        
+        % Création de la structure pour tdmswrite
+        % Note: 'tdmswrite' écrit des tables ou des timetables
+        
+        % On crée une timetable simulant un échantillonnage à 'fs'
+        timeVec = seconds((0:length(raw_vector)-1)' / fs);
+        
+        % On sépare partie réelle et imaginaire car le TDMS standard DAQmx gère mal le complexe natif
+        % Le NI USB-6211 est un DAQ réel, il ne voit que des voltages réels.
+        % Si votre simulation est en bande de base (complexe), le DAQ physique recevrait I et Q sur 2 canaux.
+        
+        T = timetable(timeVec, real(raw_vector), imag(raw_vector), ...
+            'VariableNames', {'Dev1_ai0_I', 'Dev1_ai1_Q'});
+        
+        % Écriture du fichier
+        % CORRECTION : Suppression de 'GroupName' qui cause l'erreur d'argument
+        tdmswrite(tdmsFileName, T);
+        
+        fprintf('Export TDMS réussi : %s\n', tdmsFileName);
+        
+    catch ME
+        warning('Impossible d''écrire le fichier TDMS. Vérifiez que vous avez la version R2022a+ ou l''addon aproprié.');
+        fprintf('Erreur : %s\n', ME.message);
+        
+        % Fallback : Sauvegarde en CSV si TDMS échoue (format universel)
+        csvwrite('output/simulation_raw.csv', [real(raw_vector), imag(raw_vector)]);
+    end
 end

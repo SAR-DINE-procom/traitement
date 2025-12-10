@@ -8,7 +8,7 @@
   "tpd": 1e-7,
   "fs": 400e6,
   "speed": 0.5,
-  "flightDuration": 10,
+  "flightDuration": 2,
   "maxRange": 1000,
   "motionErrors": [0.0, 0.0, 0.005],
   "targetsPosition": [

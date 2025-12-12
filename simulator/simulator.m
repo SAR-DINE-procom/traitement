@@ -13,7 +13,9 @@ function simulator(configPath)
     [fc, rangeResolution, crossRangeResolution, bw, prf, aperture, tpd, fs, speed, flightDuration, maxRange, targetsPosition, motionErrors] = getParams(configPath); 
 
     % --- Radar System Setup ---
-    waveform = phased.LinearFMWaveform('SampleRate', fs, 'PulseWidth', tpd, 'PRF', prf, 'SweepBandwidth', bw);
+    %waveform = phased.LinearFMWaveform('SampleRate', fs, 'PulseWidth', tpd, 'PRF', prf, 'SweepBandwidth', bw);
+    waveform = phased.FMCWWaveform('SampleRate', fs, 'SweepTime', 1/prf, 'SweepBandwidth', bw, 'SweepDirection', 'Triangle');
+    plot(waveform)
     radarPlatform = phased.Platform('InitialPosition', [0;0;2], 'Velocity', [0; speed; 0]);
     
     antenna = phased.CosineAntennaElement('FrequencyRange', [20e9 26e9]);
@@ -99,9 +101,29 @@ function simulator(configPath)
 
     % --- Signal Processing ---
     % 1. Pulse Compression
-    pulseCompression = phased.RangeResponse('RangeMethod', 'Matched filter', 'PropagationSpeed', c, 'SampleRate', fs);
-    matchingCoeff = getMatchedFilter(waveform);
-    [cdata, rnggrid] = pulseCompression(rxsig, matchingCoeff);
+    %pulseCompression = phased.RangeResponse('RangeMethod', 'Matched filter', 'PropagationSpeed', c, 'SampleRate', fs);
+    %matchingCoeff = getMatchedFilter(waveform);
+    %[cdata, rnggrid] = pulseCompression(rxsig, matchingCoeff);
+    ref_sig = waveform();
+    ref_sig = ref_sig(1:size(rxsig, 1));
+    % 1. Dechirp (Mélange avec la référence)
+    dechirpedSig = dechirp(rxsig, ref_sig); 
+
+    % 2. Range Processing (FFT)
+    % La distance est proportionnelle à la fréquence de battement
+    Nfft = 2^nextpow2(size(dechirpedSig, 1));
+    cdata_fft = fft(dechirpedSig, Nfft,1);
+    
+    % 3. Calcul de la grille de distance (Range Grid)
+    % Formule FMCW : f_beat = (2 * Slope * R) / c  => R = (c * f_beat) / (2 * Slope)
+    slope = bw * prf; % Pente du chirp pour calcul de distance plus tard
+    freq_bins = (0:Nfft-1) * (fs/Nfft);
+    rnggrid = (c * freq_bins) / (2 * slope);
+    
+    % On ne garde que la partie positive et pertinente du spectre
+    half_spectrum = floor(Nfft/2);
+    cdata = cdata_fft(1:half_spectrum, :);
+    rnggrid = rnggrid(1:half_spectrum).'; %
 
     % --- Visualization: Range Compressed Data ---
     figure(4);

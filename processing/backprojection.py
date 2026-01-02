@@ -1,245 +1,194 @@
-import numpy as np 
-import matplotlib.pyplot as plt 
-from scipy.signal import chirp
+import numpy as np
+import matplotlib.pyplot as plt
 from scipy.signal.windows import hann
 from scipy import constants
-from scipy.ndimage import map_coordinates
 
-class Backprojection: 
-    def __init__(self, fs_hz, T_chirp_s, B_hz):
-        self.fs_hz = fs_hz 
-        self.T_chirp_s = T_chirp_s 
-        self.B_hz = B_hz 
-        self.c_m_s =  constants.speed_of_light
+class Backprojection:
+    def __init__(self, fs_hz, T_chirp_s, B_hz, fc_hz):
+        self.fs_hz = fs_hz
+        self.T_chirp_s = T_chirp_s
+        self.B_hz = B_hz
+        self.fc_hz = fc_hz
+        self.c_m_s = constants.speed_of_light
+        self.symbol = None
+        self.window = None
 
-        pass 
-
-    def build_chirp(self): 
-        self.N = int(self.fs_hz * self.T_chirp_s )
-        self.t_s = np.linspace(0, self.T_chirp_s / 2, self.N // 2, endpoint=False)
-        ramp_up = chirp(
-            self.t_s,
-            f0=0,
-            t1=self.T_chirp_s / 2,
-            f1=self.B_hz,
-            method='linear'
-        )
-        ramp_down = chirp(
-            self.t_s,
-            f0=self.B_hz,
-            t1=self.T_chirp_s / 2,
-            f1=0,
-            method='linear'
-        )
-        self.symbol = np.concatenate((ramp_up, ramp_down))
-    def build_window(self): 
-        self.window = hann(self.N)
-
-    
-    def matched_filtering(self, sig): 
-        reference = self.window * self.symbol 
-        reference_ft = np.fft.fft(reference)
-        sig_ft = np.fft.fft(sig)
-        corr_ft = sig_ft * np.conjugate(reference_ft)
-        return np.fft.ifft(corr_ft)
-
-    def range_compression(self, mat): 
-        mat_ft = np.fft.fft(mat, axis=0)
-        mat_compressed = np.apply_along_axis(
-            self.matched_filtering, 
-            axis=0, 
-            arr=mat_ft, 
-            reference_ft=self.symbol
-        )
-        return mat_compressed
-    
-    def create_grid(self, xlim, ylim, steps): 
-        eps = steps[0] / 10
-        x = np.arange(xlim[0], xlim[1] + eps, steps[0])
-        y = np.arange(ylim[0], ylim[1] + eps, steps[1])
-        self.grid_pos_x, self.grid_pos_y = np.meshgrid(x, y) 
-        self.grid_xy = np.stack([self.grid_pos_x, self.grid_pos_y], axis=-1)
-    
-    def image_formation(self, M_rc, M_pos, axe_X, axe_Y, f_p, f_s): 
-        Ny = len(axe_Y)          # Nombre de pixels en Range (Y)
-        Nx = len(axe_X)          # Nombre de pixels en Cross-range (X)
+    def build_chirp(self):
+        # 1. Chirp Centré sur t=0 pour la simulation physique
+        self.N_chirp = int(self.fs_hz * self.T_chirp_s)
+        self.t_chirp = np.linspace(-self.T_chirp_s/2, self.T_chirp_s/2, self.N_chirp)
+        k = self.B_hz / self.T_chirp_s
         
-        N_samples, N_pulses = M_rc.shape 
+        # Signal Analytique (Complexe)
+        self.symbol = np.exp(1j * np.pi * k * self.t_chirp**2)
 
-        k = (4 * np.pi * f_p) / self.c_m_s
+    def build_window(self):
+        self.window = hann(self.N_chirp)
+        #self.window = np.ones(self.N_chirp)
+
+    def range_compression(self, mat_raw):
+        """
+        Correction MAJEURE ici : Le filtre adapté en fréquence est S * conj(FFT(ref))
+        """
+        N_samples, N_pulses = mat_raw.shape
         
+        # Taille FFT pour convolution linéaire rapide
+        n_fft = N_samples + self.N_chirp
+        n_fft = int(2**np.ceil(np.log2(n_fft))) # Puissance de 2
 
-        M_pos_exp = M_pos[np.newaxis, np.newaxis, :, :]
+        # 1. FFT du Signal
+        S_fft = np.fft.fft(mat_raw, n=n_fft, axis=0)
         
-
-        if self.grid_xy.shape[-1] == 2:
-            zeros_z = np.zeros((Ny, Nx, 1))
-            grid_xyz = np.concatenate([self.grid_xy, zeros_z], axis=-1)
-        else:
-            grid_xyz = self.grid_xy
-
-        Grille_xyz_exp = grid_xyz[:, :, :, np.newaxis]
+        # 2. FFT de la Référence (Le Chirp)
+        # Attention : Pour ne pas décaler le pic temporel, on prend le chirp
+        # tel quel et on fera le conjugué dans le domaine fréquentiel.
+        ref = self.symbol * self.window
+        Ref_fft = np.fft.fft(ref, n=n_fft)
         
-        Diff_coords_all = Grille_xyz_exp - M_pos_exp
-        M_dist = np.linalg.norm(Diff_coords_all, axis=2) # Résultat : (Ny, Nx, N_pulses)
-
-        M_delay = 2 * M_dist / self.c_m_s 
-
-        M_indices = M_delay * f_s
-
-        M_phase = np.exp(1j * k * M_dist)
-
-        # interpolation
-        idx_samples = M_indices.ravel()
-
-        k_indices_grid = np.arange(N_pulses)
-        k_indices_grid = np.broadcast_to(k_indices_grid[np.newaxis, np.newaxis, :], (Ny, Nx, N_pulses))
-        idx_pulses = k_indices_grid.ravel()
-
-        coords = np.stack([idx_samples, idx_pulses], axis=0)
-
+        # 3. Filtrage Adapté (Corrélation)
+        # H(f) = S(f) * conj(Ref(f))
+        OUT_fft = S_fft * np.conj(Ref_fft)[:, np.newaxis]
         
-        M_inter_flat = map_coordinates(
-            input=M_rc, # Pas besoin de transpose si M_rc est (Samples, Pulses) et coords est [Samples, Pulses]
-            coordinates=coords,
-            order=3,
-            mode='constant',
-            cval=0.0
-        )
+        # 4. Retour Temporel
+        compressed = np.fft.ifft(OUT_fft, axis=0)
+        
+        return compressed
 
-        M_inter = M_inter_flat.reshape(Ny, Nx, N_pulses)
+    def create_grid(self, xlim, ylim, step):
+        self.grid_x = np.arange(xlim[0], xlim[1], step)
+        self.grid_y = np.arange(ylim[0], ylim[1], step)
+        self.gx, self.gy = np.meshgrid(self.grid_x, self.grid_y)
+
+    def image_formation(self, M_rc, M_pos):
+        Ny, Nx = self.gx.shape
+        N_fft_len, N_pulses = M_rc.shape
         
-        M_corrected = M_inter * M_phase
-        
-        image = np.sum(M_corrected, axis=2)
-        
+        image = np.zeros((Ny, Nx), dtype=complex)
+        k_rad = 4 * np.pi * self.fc_hz / self.c_m_s
+
+        print(f"Backprojection de {N_pulses} pulses...")
+
+        for i in range(N_pulses):
+            pos_ant = M_pos[i] # [x, y, z]
+            
+            # 1. Distance Exacte
+            dist = np.sqrt((self.gx - pos_ant[0])**2 + 
+                           (self.gy - pos_ant[1])**2 + 
+                           (0       - pos_ant[2])**2)
+            
+            # 2. Index Echantillon
+            # Le délai aller-retour
+            delay = 2 * dist / self.c_m_s
+            
+            # Note importante sur le délai de compression :
+            # La convolution via FFT sans shift décale le résultat.
+            # Avec np.fft.fft(chirp) où le chirp est défini sur [-T/2, T/2], 
+            # numpy considère que le temps commence à 0.
+            # L'index brut correspond donc directement au retard.
+            idx = delay * self.fs_hz
+            
+            # 3. Interpolation simple (Plus rapide que map_coordinates)
+            col = M_rc[:, i]
+            val_interp = np.interp(idx.ravel(), np.arange(N_fft_len), col, left=0, right=0)
+            val_interp = val_interp.reshape(Ny, Nx)
+            
+            # 4. Correction de Phase
+            phase_corr = np.exp(1j * k_rad * dist)
+            
+            # Accumulation
+            image += val_interp * phase_corr
+            
         return image
-    
-    def plot_window(self): 
-        plt.plot(self.window)
-        plt.show()
-    def plot_chirp(self): 
-        if self.symbol is None:
-            print("Erreur: Le chirp n'a pas encore été généré.")
-            return
-
-        # Reconstruction du vecteur temps complet pour l'affichage
-        N = len(self.symbol)
-        t_full = np.linspace(0, self.T_chirp_s, N, endpoint=False)
-
-        plt.figure(figsize=(12, 10))
-
-        # 1. Amplitude (Time Domain)
-        plt.subplot(3, 1, 1)
-        plt.plot(t_full * 1e6, self.symbol)
-        plt.title(f"Chirp Triangulaire (Time Domain) - B={self.B_hz/1e6} MHz")
-        plt.xlabel("Temps (µs)")
-        plt.ylabel("Amplitude")
-        plt.grid(True)
-
-        # 2. Phase (Time Domain)
-        # On utilise unwrap pour éviter les sauts de 2pi et voir la continuité
-        plt.subplot(3, 1, 2)
-        # Note: scipy.signal.chirp génère un signal réel. 
-        # Pour voir une phase significative, on prend souvent la phase analytique (Hilbert)
-        # ou simplement l'acos du signal normalisé, mais ici affichons le signal brut zoomé
-        # ou mieux : le spectrogramme est plus parlant pour la fréquence.
-        # Si le signal était complexe (exp), on ferait np.angle.
-        # Ici, comme c'est réel, on va afficher un zoom sur la transition centrale.
-        
-        mid_point = int(N/2)
-        zoom_range = 100 # points
-        plt.plot(t_full[mid_point-zoom_range:mid_point+zoom_range]*1e6, 
-                 self.symbol[mid_point-zoom_range:mid_point+zoom_range])
-        plt.title("Zoom sur la transition centrale (Haut du triangle)")
-        plt.xlabel("Temps (µs)")
-        plt.grid(True)
-
-        # 3. Spectrogramme (Time-Frequency)
-        plt.subplot(3, 1, 3)
-        plt.specgram(self.symbol, NFFT=256, Fs=self.fs_hz, noverlap=128, cmap='inferno')
-        plt.title("Spectrogramme (Fréquence vs Temps)")
-        plt.xlabel("Temps (s)")
-        plt.ylabel("Fréquence (Hz)")
-        plt.colorbar(label='Densité de Puissance Spectrale (dB/Hz)')
-        plt.tight_layout()
-        plt.show()
-    
-
-
-"""
-# --- TEST DU FILTRAGE ADAPTÉ ---
 if __name__ == "__main__":
-    # 1. Configuration
-    fs = 500e6
-    T_chirp = 1e-6
-    B = 200e6
+    # --- 1. Tes Paramètres (24 GHz) ---
+    fc = 24e9       # 24 GHz
+    B = 200e6       # 200 MHz -> Résolution Range = 75 cm
     
-    bp = Backprojection(fs, T_chirp, B)
+    # Échantillonnage : Il faut être au dessus de B (complexe)
+    # Prenons de la marge pour une belle interpolation
+    fs = 500e6      # 500 MHz
+    
+    T_chirp = 10e-6 # 10 µs (Chirp assez long pour donner de l'énergie)
+    
+    bp = Backprojection(fs, T_chirp, B, fc)
     bp.build_chirp()
     bp.build_window()
     
-    # 2. Création d'un signal reçu simulé (plus long que le chirp)
-    # On imagine que le radar écoute pendant 3x la durée du chirp
-    len_signal = int(3 * bp.N)
-    rx_signal = np.zeros(len_signal)
+    # --- 2. Géométrie pour atteindre la limite Azimut ---
+    # Lambda = c / 24GHz = 1.25 cm
+    # Antenne estimée = 10 cm.
+    # Beamwidth approx = Lambda / L_ant = 0.125 rad (~7 degrés)
+    # À 300m de distance, le footprint est de ~37 mètres.
+    # Il faut que L_synth > Footprint pour avoir la résolution max (L_ant/2).
     
-    # On place le chirp (l'écho) à un endroit précis (ex: index 500)
-    delay_idx = 500
-    rx_signal[delay_idx : delay_idx + bp.N] = bp.symbol
+    dist_target = 300.0 # On se met à 300m
     
-    # 3. Ajout de bruit (SNR faible pour tester la robustesse)
-    noise_power = 0.5 
-    noise = np.random.normal(0, np.sqrt(noise_power), len_signal)
-    rx_signal_noisy = rx_signal + noise
+    N_pulses = 1500    # Il faut "sur-échantillonner" spatialement (Lambda est petit !)
+    L_synth = 50.0     # Trajectoire de 50m (suffisant pour couvrir le faisceau à 300m)
     
-    # 4. Filtrage Adapté
-    # Note: Votre fonction matched_filtering fait une FFT. 
-    # Pour que la multiplication spectrale fonctionne, il faut que 'sig' et 'reference' aient la même taille.
-    # Votre implémentation actuelle de matched_filtering suppose que 'sig' a la même taille que 'window'.
-    # Nous devons donc adapter l'appel ou modifier la méthode pour gérer le Zero-Padding.
+    y_traj = np.linspace(-L_synth/2, L_synth/2, N_pulses) 
     
-    # --- Adaptation temporaire pour votre méthode actuelle ---
-    # Votre méthode matched_filtering multiplie terme à terme : reference * sig.
-    # Cela implique que le signal reçu doit être découpé à la taille du chirp, 
-    # OU que la référence doit être "padée" à la taille du signal reçu.
-    # La méthode standard est de padder la référence.
+    M_pos = np.zeros((N_pulses, 3))
+    M_pos[:, 0] = y_traj 
+    M_pos[:, 1] = -dist_target
+    M_pos[:, 2] = 50.0 # Vol à 50m de haut
     
-    # On va modifier légèrement la logique ici pour utiliser numpy.correlate ou adapter votre classe.
-    # Pour rester simple et utiliser VOTRE méthode, on va tricher : 
-    # On va faire la convolution manuellement ici pour la démo, car votre méthode matched_filtering
-    # semble conçue pour traiter une fenêtre de la même taille que le chirp (pulse compression pulse par pulse).
+    target_pos = np.array([0, 0, 0])
     
-    # Utilisons une convolution standard pour voir le résultat sur tout le signal
-    matched_output = np.correlate(rx_signal_noisy, bp.symbol * bp.window, mode='full')
+    # --- 3. Buffer ---
+    dist_max = np.linalg.norm(M_pos[0] - target_pos) + 20 
+    tau_max = 2 * dist_max / constants.speed_of_light
+    N_samples = int(tau_max * fs) + bp.N_chirp + 500
     
-    # 5. Visualisation
-    plt.figure(figsize=(12, 8))
+    print(f"--- SIMULATION 24 GHz ---")
+    print(f"Résolution Range (Y) attendue : {constants.speed_of_light/(2*B):.3f} m")
+    print(f"Résolution Azimut (X) théorique (L_ant/2) : ~0.05 m")
     
-    # Signal Bruité
-    plt.subplot(3, 1, 1)
-    plt.plot(rx_signal_noisy)
-    plt.title("Signal Reçu Bruité (Echo caché vers l'index 500)")
-    plt.grid(True)
+    raw_data = np.zeros((N_samples, N_pulses), dtype=complex)
     
-    # Chirp de Référence
-    plt.subplot(3, 1, 2)
-    plt.plot(bp.symbol * bp.window)
-    plt.title("Référence (Chirp fenêtré)")
-    plt.grid(True)
+    # --- 4. Génération ---
+    print("Génération des données...")
+    for i in range(N_pulses):
+        dist = np.linalg.norm(M_pos[i] - target_pos)
+        tau = 2 * dist / constants.speed_of_light
+        idx_start = int(tau * fs)
+        
+        # Phase très sensible à 24 GHz !
+        phase_carrier = np.exp(-1j * 4 * np.pi * fc * dist / constants.speed_of_light)
+        
+        if idx_start + bp.N_chirp < N_samples:
+            raw_data[idx_start:idx_start+bp.N_chirp, i] = bp.symbol * phase_carrier
+
+    # --- 5. Traitement ---
+    print("Compression distance...")
+    rc = bp.range_compression(raw_data)
     
-    # Résultat du Filtrage
-    plt.subplot(3, 1, 3)
-    lags = np.arange(len(matched_output)) - (len(bp.symbol) - 1)
-    plt.plot(lags, np.abs(matched_output))
-    plt.title("Sortie du Filtrage Adapté (Pic de corrélation)")
-    plt.xlabel("Décalage (échantillons)")
-    plt.grid(True)
+    print("Backprojection...")
+    # Grille avec pixels rectangulaires ou carrés ?
+    # Prenons des pixels carrés très fins (2cm) pour voir la finesse en Azimut
+    bp.create_grid([-1, 1], [-2, 2], 0.02) 
     
-    # On marque la position théorique
-    plt.axvline(x=delay_idx, color='r', linestyle='--', label='Position Réelle')
+    img = bp.image_formation(rc, M_pos)
+    
+    # --- 6. Affichage ---
+    plt.figure(figsize=(8, 10)) # Format portrait car la tache sera allongée en Y
+    img_db = 20 * np.log10(np.abs(img) + 1e-9)
+    vmax = np.max(img_db)
+    vmin = vmax - 30 
+    
+    plt.imshow(img_db, extent=[-1, 1, -2, 2], origin='lower', cmap='inferno', vmin=vmin, vmax=vmax, interpolation='nearest')
+    plt.colorbar(label='Amplitude (dB)')
+    plt.title(f"24 GHz Backprojection\nResolution: Azimut < 10cm | Range ~75cm")
+    plt.xlabel("Azimut X (m)")
+    plt.ylabel("Range Y (m)")
+    plt.grid(True, color='white', alpha=0.3, linestyle='--')
+    
+    # Cercle théorique de résolution pour comparaison
+    # Ellipse de 5cm de large et 75cm de haut
+    from matplotlib.patches import Ellipse
+    ax = plt.gca()
+    ell = Ellipse((0, 0), width=0.05, height=0.75, edgecolor='cyan', facecolor='none', linestyle='--', linewidth=2, label='Résolution Théorique')
+    ax.add_patch(ell)
     plt.legend()
     
-    plt.tight_layout()
     plt.show()
-    """

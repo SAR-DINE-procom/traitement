@@ -66,7 +66,8 @@ def pga_autofocus(sar_image, iterations=5, window_width=None):
         # 2. WINDOWING (Fenêtrage)
         # On réduit la fenêtre à chaque itération pour exclure le bruit
         # (Stratégie adaptative simple)
-        current_width = int(window_width / (i + 1)) 
+        current_width = int(window_width / (i + 1))
+        print(f"current width: {current_width}") 
         center = N_az // 2
         start = max(0, center - current_width // 2)
         end = min(N_az, center + current_width // 2)
@@ -145,7 +146,7 @@ if __name__ == "__main__":
     blurred_image = np.fft.ifft(IMG_blurred, axis=1)
     
     # Lancement du PGA
-    corrected_image, est_err = pga_autofocus(blurred_image, iterations=11)
+    corrected_image, est_err = pga_autofocus(blurred_image, iterations=20)
     
     # Affichage
     plt.figure(figsize=(10, 8))

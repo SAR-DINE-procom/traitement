@@ -14,12 +14,17 @@ class Backprojection:
         self.window = None
 
     def build_chirp(self):
-        # 1. Chirp Centré sur t=0 pour la simulation physique
+        # 1. Chirp défini sur [0, T]
+        # D'après l'analyse du signal MATLAB, le chirp démarre à 0 Hz (et non -B/2).
         self.N_chirp = int(self.fs_hz * self.T_chirp_s)
-        self.t_chirp = np.linspace(-self.T_chirp_s/2, self.T_chirp_s/2, self.N_chirp)
+        self.t_chirp = np.linspace(0, self.T_chirp_s, self.N_chirp)
+        
+        # Pente k = B / T
         k = self.B_hz / self.T_chirp_s
         
-        # Signal Analytique (Complexe)
+        # Phase pour un balayage de 0 à B sur [0, T]
+        # f(t) = k * t
+        # Phi(t) = 2*pi * integral(f) = pi * k * t^2
         self.symbol = np.exp(1j * np.pi * k * self.t_chirp**2)
 
     def build_window(self):
@@ -42,7 +47,12 @@ class Backprojection:
         # 2. FFT de la Référence (Le Chirp)
         # Attention : Pour ne pas décaler le pic temporel, on prend le chirp
         # tel quel et on fera le conjugué dans le domaine fréquentiel.
-        ref = self.symbol * self.window
+        
+        # --- Fenêtrage Distance ---
+        # On applique une fenêtre de Hann sur le chirp de référence
+        range_window = hann(self.N_chirp)
+        ref = self.symbol * range_window
+        
         Ref_fft = np.fft.fft(ref, n=n_fft)
         
         # 3. Filtrage Adapté (Corrélation)
@@ -66,6 +76,9 @@ class Backprojection:
         image = np.zeros((Ny, Nx), dtype=complex)
         k_rad = 4 * np.pi * self.fc_hz / self.c_m_s
 
+        # --- Fenêtrage Azimut ---
+        az_window = hann(N_pulses)
+
         print(f"Backprojection de {N_pulses} pulses...")
 
         for i in range(N_pulses):
@@ -87,16 +100,22 @@ class Backprojection:
             # L'index brut correspond donc directement au retard.
             idx = delay * self.fs_hz
             
-            # 3. Interpolation simple (Plus rapide que map_coordinates)
+            # 3. Interpolation (Gère le complexe)
             col = M_rc[:, i]
-            val_interp = np.interp(idx.ravel(), np.arange(N_fft_len), col, left=0, right=0)
-            val_interp = val_interp.reshape(Ny, Nx)
+            
+            # np.interp ne gère pas le complexe, on sépare
+            val_real = np.interp(idx.ravel(), np.arange(N_fft_len), np.real(col), left=0, right=0)
+            val_imag = np.interp(idx.ravel(), np.arange(N_fft_len), np.imag(col), left=0, right=0)
+            
+            val_interp = (val_real + 1j * val_imag).reshape(Ny, Nx)
             
             # 4. Correction de Phase
+            # Le debug a montré que la phase mesurée suit bien -4*pi*R/lambda.
+            # Il faut donc compenser par +4*pi*R/lambda.
             phase_corr = np.exp(1j * k_rad * dist)
             
             # Accumulation
-            image += val_interp * phase_corr
+            image += val_interp * phase_corr * az_window[i]
             
         return image
 if __name__ == "__main__":

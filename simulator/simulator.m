@@ -13,8 +13,8 @@ function simulator(configPath)
     [fc, rangeResolution, crossRangeResolution, bw, prf, aperture, tpd, fs, speed, flightDuration, maxRange, targetsPosition, motionErrors] = getParams(configPath); 
 
     % --- Radar System Setup ---
-    %waveform = phased.LinearFMWaveform('SampleRate', fs, 'PulseWidth', tpd, 'PRF', prf, 'SweepBandwidth', bw);
-    waveform = phased.FMCWWaveform('SampleRate', fs, 'SweepTime', 1/prf, 'SweepBandwidth', bw, 'SweepDirection', 'Triangle');
+    waveform = phased.LinearFMWaveform('SampleRate', fs, 'PulseWidth', tpd, 'PRF', prf, 'SweepBandwidth', bw);
+    %waveform = phased.FMCWWaveform('SampleRate', fs, 'SweepTime', 1/prf, 'SweepBandwidth', bw, 'SweepDirection', 'Triangle');
     plot(waveform)
     radarPlatform = phased.Platform('InitialPosition', [0;0;2], 'Velocity', [0; speed; 0]);
     

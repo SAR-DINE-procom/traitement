@@ -1,4 +1,4 @@
 addpath('simulator');
 addpath('processing'); 
 addpath('tools'); 
-simulator("conf/config.json")
+simulator("conf/config2.json")

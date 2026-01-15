@@ -67,6 +67,10 @@ def pga_autofocus(sar_image, iterations=5, window_width=None):
         # On réduit la fenêtre à chaque itération pour exclure le bruit
         # (Stratégie adaptative simple)
         current_width = int(window_width / (i + 1))
+        if i<7: 
+            current_width = 60
+        
+        current_width = 2
         print(f"current width: {current_width}") 
         center = N_az // 2
         start = max(0, center - current_width // 2)

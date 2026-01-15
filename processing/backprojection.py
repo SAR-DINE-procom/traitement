@@ -14,18 +14,24 @@ class Backprojection:
         self.window = None
 
     def build_chirp(self):
-        # 1. Chirp défini sur [0, T]
-        # D'après l'analyse du signal MATLAB, le chirp démarre à 0 Hz (et non -B/2).
+        # 1. Chirp défini sur [-T/2, T/2] (Symetric)
         self.N_chirp = int(self.fs_hz * self.T_chirp_s)
-        self.t_chirp = np.linspace(0, self.T_chirp_s, self.N_chirp)
+        
+        # Correction 1: Axe temporel centré (Symétrique)
+        self.t_chirp = (np.arange(self.N_chirp) - self.N_chirp / 2) / self.fs_hz
+        self.t_chirp = (np.arange(self.N_chirp)) / self.fs_hz 
+
+        self.symbol = np.exp(1j * np.pi * self.B_hz * (self.t_chirp**2 / self.T_chirp_s - self.t_chirp))
         
         # Pente k = B / T
         k = self.B_hz / self.T_chirp_s
         
-        # Phase pour un balayage de 0 à B sur [0, T]
+        # Chirp symétrique (balaye de -B/2 à B/2)
         # f(t) = k * t
-        # Phi(t) = 2*pi * integral(f) = pi * k * t^2
-        self.symbol = np.exp(1j * np.pi * k * self.t_chirp**2)
+        # Phi(t) = pi * k * t^2
+        #self.symbol = np.exp(1j * np.pi * k * self.t_chirp**2)
+        plt.plot(np.real(self.symbol))
+        plt.show()
 
     def build_window(self):
         self.window = hann(self.N_chirp)
@@ -36,6 +42,10 @@ class Backprojection:
         Correction MAJEURE ici : Le filtre adapté en fréquence est S * conj(FFT(ref))
         """
         N_samples, N_pulses = mat_raw.shape
+        #mat_raw = mat_raw[1:47, :]
+        # plt.plot(np.abs(mat_raw[:, 0]))
+        # plt.grid()
+        # plt.show()
         
         # Taille FFT pour convolution linéaire rapide
         n_fft = N_samples + self.N_chirp
@@ -43,25 +53,40 @@ class Backprojection:
 
         # 1. FFT du Signal
         S_fft = np.fft.fft(mat_raw, n=n_fft, axis=0)
+        # plt.plot(S_fft[:, 0])
+        # plt.show()
         
         # 2. FFT de la Référence (Le Chirp)
         # Attention : Pour ne pas décaler le pic temporel, on prend le chirp
         # tel quel et on fera le conjugué dans le domaine fréquentiel.
         
         # --- Fenêtrage Distance ---
-        # On applique une fenêtre de Hann sur le chirp de référence
+        # NOTE: Pour voir le Sinus Cardinal (Sinc) classique, utiliser np.ones()
+        # La fenêtre de Hann supprime les lobes secondaires.
         range_window = hann(self.N_chirp)
+        #range_window = np.ones(self.N_chirp)
         ref = self.symbol * range_window
-        
+        print(f"{np.shape(self.symbol)}, ")
+         
         Ref_fft = np.fft.fft(ref, n=n_fft)
+        #Ref_fft = np.fft.fft(np.conj(ref), n=n_fft)
+        #plt.plot(np.abs(tmp))
+        #plt.show()
+         
         
         # 3. Filtrage Adapté (Corrélation)
         # H(f) = S(f) * conj(Ref(f))
         OUT_fft = S_fft * np.conj(Ref_fft)[:, np.newaxis]
+        #OUT_fft = S_fft * Ref_fft[:, np.newaxis]
         
         # 4. Retour Temporel
         compressed = np.fft.ifft(OUT_fft, axis=0)
-        
+        #plt.plot(a)
+        # plt.grid()
+        # plt.title(f"Range-compressed data")
+        # plt.show()
+    
+
         return compressed
 
     def create_grid(self, xlim, ylim, step):
@@ -177,6 +202,14 @@ if __name__ == "__main__":
         
         if idx_start + bp.N_chirp < N_samples:
             raw_data[idx_start:idx_start+bp.N_chirp, i] = bp.symbol * phase_carrier
+
+    plt.figure()
+    plt.imshow(np.real(raw_data), aspect='auto', interpolation='nearest', cmap='inferno')
+    plt.colorbar(label='Amplitude')
+    plt.title("Raw Data Magnitude")
+    plt.xlabel("Pulse Index")
+    plt.ylabel("Sample Index")
+    plt.show()
 
     # --- 5. Traitement ---
     print("Compression distance...")

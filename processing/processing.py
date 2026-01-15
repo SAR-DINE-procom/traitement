@@ -16,7 +16,6 @@ from autofocus import pga_autofocus
 def main():
     # Paths
     tdms_path = os.path.join(parent_dir, 'output', 'simulation_raw.tdms')
-    # Utilisation de config2.json comme demandé
     config_path = os.path.join(parent_dir, 'conf', 'config2.json')
     
     # 1. Load Data
@@ -60,9 +59,9 @@ def main():
     
     # Define Grid
     # Wide view
-    range_lims = [0, 6]      # X axis (Range)
-    cross_range_lims = [0, 5]  # Y axis (Cross-Range)
-    step = 0.05 # 5cm grid
+    range_lims = [0, 10]      # X axis (Range)
+    cross_range_lims = [0, 1]  # Y axis (Cross-Range)
+    step = 0.025 # 5cm grid
     
     bp.create_grid(range_lims, cross_range_lims, step)
     
@@ -88,8 +87,6 @@ def main():
                extent=[cross_range_lims[0], cross_range_lims[1], range_lims[0], range_lims[1]], 
                origin='lower', 
                cmap='jet', 
-               vmin=vmin, 
-               vmax=vmax,
                aspect='equal')
     plt.colorbar(label='Amplitude (dB)')
     plt.title('SAR Image (Original)')

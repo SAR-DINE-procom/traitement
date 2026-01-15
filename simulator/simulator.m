@@ -13,7 +13,7 @@ function simulator(configPath)
     [fc, rangeResolution, crossRangeResolution, bw, prf, aperture, tpd, fs, speed, flightDuration, maxRange, targetsPosition, motionErrors] = getParams(configPath); 
 
     % --- Radar System Setup ---
-    waveform = phased.LinearFMWaveform('SampleRate', fs, 'PulseWidth', tpd, 'PRF', prf, 'SweepBandwidth', bw);
+    waveform = phased.LinearFMWaveform('SampleRate', fs, 'PulseWidth', tpd, 'PRF', prf, 'SweepBandwidth', bw, SweepInterval = 'Symmetric');
     %waveform = phased.FMCWWaveform('SampleRate', fs, 'SweepTime', 1/prf, 'SweepBandwidth', bw, 'SweepDirection', 'Triangle');
     plot(waveform)
     radarPlatform = phased.Platform('InitialPosition', [0;0;2], 'Velocity', [0; speed; 0]);
@@ -24,7 +24,7 @@ function simulator(configPath)
     transmitter = phased.Transmitter('PeakPower', 50e3, 'Gain', antennaGain);
     radiator = phased.Radiator('Sensor', antenna, 'OperatingFrequency', fc, 'PropagationSpeed', c);
     collector = phased.Collector('Sensor', antenna, 'PropagationSpeed', c, 'OperatingFrequency', fc);
-    receiver = phased.ReceiverPreamp('SampleRate', fs, 'NoiseFigure', 30);
+    receiver = phased.ReceiverPreamp('SampleRate', fs, 'NoiseFigure', 3); % , 'Gain', 20 + antennaGain
     channel = phased.FreeSpace('PropagationSpeed', c, 'OperatingFrequency', fc, 'SampleRate', fs, 'TwoWayPropagation', true);
 
     % --- Target Setup ---
@@ -53,7 +53,8 @@ function simulator(configPath)
     % --- Simulation Loop ---
     slowTime = 1/prf;
     numpulses = flightDuration/slowTime + 1;
-    truncrangesamples = ceil((2*maxRange/c)*fs);
+    maxTime = (2*maxRange/c) + tpd; 
+    truncrangesamples = ceil(maxTime * fs);
     
     refangle = zeros(1, size(targetpos, 2));
     rxsig = zeros(truncrangesamples, numpulses);
@@ -82,15 +83,21 @@ function simulator(configPath)
         sig = transmitter(sig);
         
         % Force spotlight/tracking mode (comment out for stripmap)
-        targetAngle(1,:) = refangle;
-        
+        %targetAngle(1,:) = refangle;
+        %fprintf('Pulse %d: targetAngle(1,1) = %.4f rad\n', ii, targetAngle(1,1));
         sig = radiator(sig, targetAngle);
         sig = channel(sig, radarpos_real, targetpos, radarvel, targetvel);
         sig = target(sig);
         sig = collector(sig, targetAngle);
         rxsig(:,ii) = receiver(sig);
-    end
 
+    end
+    figure(2);
+    plot(abs(rxsig(:, 1)));
+    title('First Pulse Response');
+    grid on;
+    hold on; 
+    % show() removed as it is not a valid MATLAB command 
     % --- Visualization: Raw Data ---
     figure(3);
     imagesc(real(rxsig));
@@ -130,7 +137,6 @@ function simulator(configPath)
     % Calcul de l'axe azimutal pour l'affichage
     [~, numPulses] = size(cdata);
     azimuthDist = (0:numPulses-1) * (speed/prf); 
-    
     imagesc(azimuthDist, rnggrid, abs(cdata));
     title('Range Compressed Data (Envelope)');
     xlabel('Cross-Range (m)');
@@ -139,6 +145,14 @@ function simulator(configPath)
     ylim([0 10]); % Zoom sur la zone proche (cibles)
     colorbar;
 
+    figure(5);
+    plot(rnggrid, abs(cdata(:,1)));
+    title('Range Compressed Signal (1st Pulse)');
+    xlabel('Range (m)');
+    ylabel('Amplitude');
+    grid on;
+    xlim([0 20]);
+
     % 2. Backprojection Algorithm
     fastTime = (0:1/fs:(truncrangesamples-1)/fs);
     
@@ -146,7 +160,6 @@ function simulator(configPath)
     bpa_processed = helperBackProjection(cdata, rnggrid, fastTime, fc, fs, prf, speed, crossRangeResolution, c);
 
     % --- Visualization ---
-    figure(2);
     
     % Il faut recréer les axes utilisés dans helperBackProjection pour l'affichage
     gridStep = 0.025;

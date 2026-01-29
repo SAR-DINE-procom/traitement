@@ -116,8 +116,13 @@ function [img, total_phase_error] = pga_autofocus(sar_image, iterations, window_
         p = polyfit(x_axis, estimated_error, 1);
         estimated_error = estimated_error - polyval(p, x_axis);
 
+        % Borner l'erreur entre -pi et pi (Wrap phase)
+        estimated_error = angle(exp(1j * estimated_error));
+
         % Mise à jour de l'erreur totale
         total_phase_error = total_phase_error + estimated_error;
+        % Re-wrap l'erreur totale aussi
+        total_phase_error = angle(exp(1j * total_phase_error));
         
         % 6. CORRECTION DE L'IMAGE
         % On applique la correction dans le domaine fréquentiel de l'image ORIGINALE (non shiftée)

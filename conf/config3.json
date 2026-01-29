@@ -1,0 +1,36 @@
+{
+    "radar": {
+        "description": "RFBeam K-MC4 Twin",
+        "fc": 24.125e9,
+        "bandwidth": 180e6,
+        "tx_power_dbm": 20,
+        "noise_figure_db": 12,
+        "adc_sample_rate": 250e3,
+        "adc_bits": 12
+    },
+    "modulation": {
+        "type": "triangular",
+        "sweep_time": 10e-3,
+        "start_frequency": 24.00e9,
+        "slope_linearity_error": 0.0
+    },
+    "antenna": {
+        "gain_dbi": 13,
+        "beamwidth_azimuth_deg": 30,
+        "beamwidth_elevation_deg": 12,
+        "rx_spacing_mm": 13.7,
+        "sidelobe_level_db": -20
+    },
+    "platform": {
+        "velocity_mps": 0.05,
+        "track_length_m": 5.0,
+        "start_position": [0.0, 0.0, 1.0],
+        "prf": 100
+    },
+    "scene": {
+        "targets": [
+            { "id": 1, "pos": [1.0, 6.0, 0], "rcs": 26.0, "description": "Cible Principale" },
+            { "id": 2, "pos": [1.5, 8.0, 0], "rcs": 26.0, "description": "Cible Secondaire" }  
+        ]
+    }
+}

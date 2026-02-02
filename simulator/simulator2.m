@@ -139,9 +139,9 @@ for m = 1:N_pulses
     
     % Ajout du Bruit Thermique (Noise Floor)
     % Calcul simplifié basé sur le SNR et la puissance moyenne
-    Noise_Pwr = 10^(-cfg.radar.noise_figure_db/10) * mean(abs(Signal_Acc_UP_Rx1).^2) * 0.01; % Facteur arbitraire pour l'exemple
-    %Noise = sqrt(Noise_Pwr/2) * (randn(1, N_samples) + 1j*randn(1, N_samples));
-    Noise = 0;
+    Noise_Pwr = 10^(-cfg.radar.noise_figure_db/10) * mean(abs(Signal_Acc_UP_Rx1).^2) * cfg.radar.thermal_noise_mult; % Facteur arbitraire pour l'exemple
+    Noise = sqrt(Noise_Pwr/2) * (randn(1, N_samples) + 1j*randn(1, N_samples));
+    %Noise = 0;
     
     % Stockage
     RawData_UP(:, m, 1) = Signal_Acc_UP_Rx1 + Noise;

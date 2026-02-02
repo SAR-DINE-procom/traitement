@@ -6,7 +6,8 @@
         "tx_power_dbm": 20,
         "noise_figure_db": 12,
         "adc_sample_rate": 250e3,
-        "adc_bits": 12
+        "adc_bits": 12,
+        "thermal_noise_mult": 1.0
     },
     "modulation": {
         "type": "triangular",

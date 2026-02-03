@@ -1,178 +1,177 @@
 import numpy as np
 import matplotlib.pyplot as plt
-
-def calculate_entropy(image):
-    """
-    Calcule l'entropie de l'image basée sur l'histogramme des amplitudes.
-    Une entropie plus faible indique généralement une image plus nette.
-    """
-    # Prendre l'amplitude de l'image complexe
-    amplitude = np.abs(image)
-    
-    # Normaliser et quantifier pour créer un histogramme
-    amplitude_norm = amplitude / np.max(amplitude)
-    # Quantification sur 256 niveaux
-    quantized = (amplitude_norm * 255).astype(int)
-    
-    # Calculer l'histogramme
-    hist, _ = np.histogram(quantized, bins=256, range=(0, 255), density=True)
-    
-    # Supprimer les bins vides pour éviter log(0)
-    hist = hist[hist > 0]
-    
-    # Calculer l'entropie: H = -sum(p * log2(p))
-    entropy = -np.sum(hist * np.log2(hist))
-    
-    return entropy
+import numpy as np
+from scipy.fft import fft, ifft, fftshift, ifftshift
 
 def pga_autofocus(sar_image, iterations=5, window_width=None):
     """
     Implémentation de l'algorithme Phase Gradient Autofocus (PGA).
     
     Args:
-        sar_image (ndarray): Image SAR complexe focalisée (mais floue).
-                             Format : [Range, Azimut] (Lignes, Colonnes).
-        iterations (int): Nombre d'itérations.
-        window_width (int): Largeur de la fenêtre initiale. Si None, prend N/2.
-        
+        sar_image (ndarray): Image SAR complexe (Range x Azimut).
+        iterations (int): Nombre d'itérations pour affiner la phase.
+        window_width (int): Largeur initiale de la fenêtre de fenêtrage.
+    
     Returns:
-        corrected_image (ndarray): Image nette.
-        phase_error (ndarray): L'erreur de phase estimée finale.
+        corrected_image (ndarray): Image SAR corrigée.
+        total_phase_error (ndarray): L'erreur de phase estimée cumulée.
     """
-    img = sar_image.copy()
-    N_range, N_az = img.shape
-    
-    # Phase d'erreur cumulée (pour le diagnostic)
-    total_phase_error = np.zeros(N_az)
-    
-    if window_width is None:
-        window_width = N_az // 2
+    num_range, num_azimuth = sar_image.shape
+    corrected_image = sar_image.copy().astype(np.complex128)
+    total_phase_error = np.zeros(num_azimuth)
 
-    # Calculer l'entropie initiale
-    initial_entropy = calculate_entropy(img)
-    print(f"Entropie initiale: {initial_entropy:.4f}")
+    if window_width is None:
+        window_width = num_azimuth // 2
 
     for i in range(iterations):
-        # 1. CENTER SHIFTING (Alignement des points brillants)
-        # On trouve le max sur chaque ligne (Range)
-        max_indices = np.argmax(np.abs(img), axis=1)
+        # 1. Sélection du point le plus brillant (Circular Shifting)
+        # On aligne le pixel le plus fort de chaque ligne sur le centre en azimut
+        max_indices = np.argmax(np.abs(corrected_image), axis=1)
+        shifted_image = np.zeros_like(corrected_image)
+        shift_amounts = num_azimuth // 2 - max_indices
         
-        # On décale circulairement chaque ligne pour mettre le max au centre
-        shifted_img = np.zeros_like(img)
-        for r in range(N_range):
-            shift = (N_az // 2) - max_indices[r]
-            shifted_img[r, :] = np.roll(img[r, :], shift)
+        for r in range(num_range):
+            shifted_image[r, :] = np.roll(corrected_image[r, :], shift_amounts[r])
 
-        # 2. WINDOWING (Fenêtrage)
-        # On réduit la fenêtre à chaque itération pour exclure le bruit
-        # (Stratégie adaptative simple)
-        current_width = int(window_width / (i + 1))
-        if i<7: 
-            current_width = 60
+        # 2. Fenêtrage (Windowing)
+        # Réduit l'influence du bruit et des cibles secondaires
+        current_window = max(window_width // (2**i), 10)  # Réduction progressive
+        win = np.zeros(num_azimuth)
+        start, end = (num_azimuth//2 - current_window//2), (num_azimuth//2 + current_window//2)
+        win[start:end] = 1
+        windowed_image = shifted_image * win
+
+        # 3. Passage dans le domaine des fréquences spatiales (Phase Gradient Estimation)
+        # L'erreur de phase se trouve dans le domaine de la compression azimut
+        g_n = ifft(ifftshift(windowed_image, axes=1), axis=1)
         
-        current_width = 2
-        print(f"current width: {current_width}") 
-        center = N_az // 2
-        start = max(0, center - current_width // 2)
-        end = min(N_az, center + current_width // 2)
+        # Calcul du gradient de phase (Estimateur du Maximum de Vraisemblance)
+        # On utilise la dérivée de la phase : Delta_phi = angle(g_n[n] * conj(g_n[n-1]))
+        g_n_diff = np.diff(g_n, axis=1, append=g_n[:, :1])
+        phase_gradient = np.imag(np.sum(np.conj(g_n) * g_n_diff, axis=0) / 
+                                 np.sum(np.abs(g_n)**2, axis=0))
+
+        # 4. Intégration et suppression des termes linéaires (Removes bias)
+        phase_error = np.cumsum(phase_gradient)
+        # On retire la rampe linéaire (shift de l'image) et l'offset moyen
+        poly = np.polyfit(np.arange(num_azimuth), phase_error, 1)
+        phase_error -= np.polyval(poly, np.arange(num_azimuth))
         
-        window = np.zeros(N_az)
-        window[start:end] = 1.0
-        
-        # Application de la fenêtre sur toutes les lignes
-        windowed_img = shifted_img * window
+        total_phase_error += phase_error
 
-        # 3. PASSAGE DOMAINE DONNÉES (FFT)
-        # On passe dans le domaine fréquentiel (Doppler/Temps lent)
-        G = np.fft.fft(windowed_img, axis=1)
+        # 5. Correction de l'image
+        # On applique la correction dans le domaine fréquentiel (Azimuth Doppler)
+        image_freq = ifft(corrected_image, axis=1)
+        correction_term = np.exp(-1j * phase_error)
+        corrected_image = fft(image_freq * correction_term, axis=1)
 
-        # 4. ESTIMATION DU GRADIENT (Produit conjugué + Somme)
-        # Différence de phase entre k et k-1
-        # G[:, 1:] * np.conj(G[:, :-1])
-        # On somme sur l'axe Range (axis=0) pour moyenner le bruit
-        numerator = np.sum(G[:, 1:] * np.conj(G[:, :-1]), axis=0)
-        
-        # On extrait la phase (le gradient)
-        dphi = np.angle(numerator)
-        
-        # On remet le premier échantillon à 0 (pas de gradient au début)
-        dphi = np.insert(dphi, 0, 0)
-
-        # 5. INTÉGRATION (Retrouver l'erreur de phase)
-        estimated_error = np.cumsum(dphi)
-        
-        # On enlève la tendance linéaire (qui correspondrait juste à un décalage global de l'image)
-        # (Optionnel mais recommandé pour éviter que l'image ne sorte du cadre)
-        trend = np.polyfit(np.arange(N_az), estimated_error, 1)
-        estimated_error -= np.polyval(trend, np.arange(N_az))
-
-        # Mise à jour de l'erreur totale
-        total_phase_error += estimated_error
-
-        # 6. CORRECTION DE L'IMAGE
-        # On applique la correction dans le domaine fréquentiel de l'image ORIGINALE (non shiftée)
-        # Attention : Il faut passer l'image originale en FFT d'abord
-        IMG_original_freq = np.fft.fft(img, axis=1)
-        
-        # Correction : on multiplie par e^(-j * erreur)
-        correction_phasor = np.exp(-1j * estimated_error)
-        IMG_corrected = IMG_original_freq * correction_phasor
-        
-        # Retour domaine image
-        img = np.fft.ifft(IMG_corrected, axis=1)
-
-        # Calculer et afficher l'entropie après correction
-        current_entropy = calculate_entropy(img)
-        print(f"Itération {i+1}/{iterations}: entropie: {current_entropy:.4f}")
-
-    return img, total_phase_error
-
-# --- EXEMPLE D'UTILISATION (Simulation) ---
-if __name__ == "__main__":
-    # Création d'une image synthétique floue
-    N = 256
-    t = np.linspace(-10, 10, N)
+    return corrected_image, total_phase_error
+# if __name__ == "__main__":
+#     # Création d'une image synthétique floue
+#     N = 256
+#     t = np.linspace(-10, 10, N)
     
-    # Un point brillant au milieu
-    true_image = np.zeros((100, N), dtype=complex)
+#     # Un point brillant au milieu
+#     true_image = np.zeros((100, N), dtype=complex)
     
-    # Positions des points brillants (range, azimut)
-    target_positions = [(50, 100), (20, 150)]  # Stocker les positions
-    true_image[50, 100] = 10 + 0j # Cible forte
-    true_image[20, 150] = 5 + 0j  # Cible moyenne
+#     # Positions des points brillants (range, azimut)
+#     target_positions = [(50, 100), (20, 150)]  # Stocker les positions
+#     true_image[50, 100] = 10 + 0j # Cible forte
+#     true_image[20, 150] = 5 + 0j  # Cible moyenne
     
-    # Ajout d'une erreur de phase (Quadratique + Sinusoïdale)
-    phase_err = 5 * np.sin(0.1 * np.arange(N)) + 0.005 * (np.arange(N) - N/2)**2
+#     # Ajout d'une erreur de phase (Quadratique + Sinusoïdale)
+#     phase_err = 5 * np.sin(0.1 * np.arange(N)) + 0.005 * (np.arange(N) - N/2)**2
     
-    # Application du flou (Produit de convolution <=> Produit en fréq)
-    IMG = np.fft.fft(true_image, axis=1)
-    IMG_blurred = IMG * np.exp(1j * phase_err)
-    blurred_image = np.fft.ifft(IMG_blurred, axis=1)
+#     # Application du flou (Produit de convolution <=> Produit en fréq)
+#     IMG = np.fft.fft(true_image, axis=1)
+#     IMG_blurred = IMG * np.exp(1j * phase_err)
+#     blurred_image = np.fft.ifft(IMG_blurred, axis=1)
     
-    # Lancement du PGA
-    corrected_image, est_err = pga_autofocus(blurred_image, iterations=20)
+#     # Lancement du PGA
+#     corrected_image, est_err = pga_autofocus(blurred_image, iterations=5)
     
-    # Affichage
-    plt.figure(figsize=(10, 8))
+#     # Affichage
+#     plt.figure(figsize=(10, 8))
     
+#     plt.subplot(2, 2, 1)
+#     plt.imshow(np.abs(blurred_image), aspect='auto', cmap='gray')
+#     plt.title("Image Floue (Entrée)")
+    
+#     plt.subplot(2, 2, 2)
+#     plt.imshow(np.abs(corrected_image), aspect='auto', cmap='gray')
+#     # Ajouter les croix sur les positions réelles des points brillants
+#     for pos in target_positions:
+#         plt.plot(pos[1], pos[0], 'r+', markersize=15, markeredgewidth=3, label='Position réelle' if pos == target_positions[0] else "")
+#     plt.title("Image Corrigée (Sortie PGA)")
+#     plt.legend()
+    
+#     plt.subplot(2, 1, 2)
+#     plt.plot(phase_err, label="Erreur réelle")
+#     plt.plot(est_err, '--', label="Erreur estimée par PGA")
+#     plt.title("Comparaison des erreurs de phase")
+#     plt.legend()
+#     plt.grid()
+    
+#     plt.tight_layout()
+#     plt.show()
+
+
+import matplotlib.pyplot as plt
+
+def main():
+    # 1. Paramètres de simulation
+    n_range = 128
+    n_azimuth = 512
+    image_pure = np.zeros((n_range, n_azimuth), dtype=np.complex128)
+    
+    # Ajouter des cibles ponctuelles (points brillants)
+    targets = [(32, 256), (64, 128), (64, 384), (96, 256)]
+    for r, a in targets:
+        image_pure[r, a] = 100.0  # Impulsion "parfaite"
+
+    # 2. Simuler l'étalement de la réponse impulsionnelle (PSF) en Azimut
+    # Dans un vrai radar, cela vient de la compression de l'impulsion
+    sar_blurred = fft(image_pure, axis=1) # Passage dans le domaine Doppler
+    
+    # 3. Générer une erreur de phase complexe (Mouvements de la plateforme)
+    # On simule une combinaison de sinus et de polynômes pour mimer le roulis/tangage
+    t = np.linspace(-1, 1, n_azimuth)
+    phase_error = 5.0 * t**2 + 2.0 * t**3 + 1.5 * np.sin(2 * np.pi * 3 * t)
+    error_signal = np.exp(1j * phase_error)
+    
+    # Appliquer l'erreur dans le domaine Doppler
+    sar_blurred = sar_blurred * error_signal
+    
+    # Retour dans le domaine spatial (Image floue)
+    sar_blurred_spatial = ifft(sar_blurred, axis=1)
+
+    # 4. Exécuter le PGA
+    corrected_image, estimated_phase = pga_autofocus(sar_blurred_spatial, iterations=10)
+
+    # 5. Visualisation
+    plt.figure(figsize=(12, 8))
+
     plt.subplot(2, 2, 1)
-    plt.imshow(np.abs(blurred_image), aspect='auto', cmap='gray')
-    plt.title("Image Floue (Entrée)")
-    
+    plt.title("Image Originale (Théorique)")
+    plt.imshow(np.abs(image_pure), cmap='gray', aspect='auto')
+
     plt.subplot(2, 2, 2)
-    plt.imshow(np.abs(corrected_image), aspect='auto', cmap='gray')
-    # Ajouter les croix sur les positions réelles des points brillants
-    for pos in target_positions:
-        plt.plot(pos[1], pos[0], 'r+', markersize=15, markeredgewidth=3, label='Position réelle' if pos == target_positions[0] else "")
-    plt.title("Image Corrigée (Sortie PGA)")
+    plt.title("Image Dégradée (Erreurs de mouvement)")
+    plt.imshow(np.abs(sar_blurred_spatial), cmap='gray', aspect='auto')
+
+    plt.subplot(2, 2, 3)
+    plt.title("Image Corrigée (PGA)")
+    plt.imshow(np.abs(corrected_image), cmap='gray', aspect='auto')
+
+    plt.subplot(2, 2, 4)
+    plt.title("Comparaison des Phases")
+    plt.plot(phase_error - np.mean(phase_error), label="Erreur Réelle", linestyle='--')
+    plt.plot(estimated_phase, label="Estimation PGA")
     plt.legend()
-    
-    plt.subplot(2, 1, 2)
-    plt.plot(phase_err, label="Erreur réelle")
-    plt.plot(est_err, '--', label="Erreur estimée par PGA")
-    plt.title("Comparaison des erreurs de phase")
-    plt.legend()
-    plt.grid()
-    
+
     plt.tight_layout()
     plt.show()
+
+if __name__ == "__main__":
+
+    main()

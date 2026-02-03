@@ -165,7 +165,7 @@ for m = 1:N_pulses
     end
 end
 toc;
-
+ [Image_PGA, Phase_Error] = pga_autofocus(Image_Accumulator, 5);
 %% 5. Visualisation et Analyse
 figure('Name', 'K-MC4 SAR Image', 'Position', [100, 100, 800, 600]);
 
@@ -195,41 +195,90 @@ legend('Ground Truth');
 
 fprintf('Image affichée. Les marqueurs indiquent la position réelle des cibles.\n');
 
-%% 6. Autofocus (PGA)
-% L'autofocus permet de corriger les erreurs de phase (mouvement non compensé, erreurs de positions)
-% en se basant sur les données de l'image elle-même.
+%% 5b. Visualisation Autofocus
+figure('Name', 'K-MC4 SAR Image Post-Autofocus (PGA)', 'Position', [150, 150, 800, 600]);
 
-fprintf('--- Lancement de l''Autofocus PGA ---\n');
-if exist('pga_autofocus', 'file')
-    % Appel de la fonction PGA
-    % On utilise 30 itérations pour converger
-    [Image_PGA, Phase_Error] = pga_autofocus(Image_Accumulator, 30); 
+Img_Mag_PGA = abs(Image_PGA);
+Img_dB_PGA = 20*log10(Img_Mag_PGA / max(Img_Mag_PGA(:)));
 
-    % Visualisation de l'image corrigée
-    figure('Name', 'K-MC4 SAR Image (PGA Corrected)', 'Position', [200, 200, 800, 600]);
-    
-    Img_Mag_PGA = abs(Image_PGA);
-    Img_dB_PGA = 20*log10(Img_Mag_PGA / max(Img_Mag_PGA(:)));
-    
-    imagesc(x_vec, y_vec, Img_dB_PGA);
-    axis xy; axis equal;
-    colormap('jet');
-    caxis([-100 0]); % Dynamique ajustée
-    colorbar;
-    title('Image SAR Reconstruite (Avec Autofocus PGA)');
-    xlabel('Azimut / Cross-Range [m]');
-    ylabel('Distance / Range [m]');
-    grid on;
-    
-    % Affichage de l'erreur de phase estimée
-    figure('Name', 'PGA Phase Error Estimation');
-    plot(rad2deg(Phase_Error));
-    title('Erreur de Phase Estimée par PGA');
-    xlabel('Index Azimut (Positions Radar)');
-    ylabel('Erreur de Phase (Degrés)');
-    grid on;
-    
-    fprintf('Autofocus terminé.\n');
-else
-    warning('La fonction pga_autofocus.m est introuvable. Vérifiez votre path.');
+imagesc(x_vec, y_vec, Img_dB_PGA);
+axis xy; axis equal;
+colormap('jet');
+caxis([-100 0]); 
+colorbar;
+title('Image SAR Après Autofocus (PGA)');
+xlabel('Azimut / Cross-Range [m]');
+ylabel('Distance / Range [m]');
+grid on;
+
+% Superposition des cibles
+hold on;
+for k = 1:length(cfg.scene.targets)
+    tgt = cfg.scene.targets(k);
+    plot(tgt.pos(1), tgt.pos(2), 'kp', 'MarkerSize', 12, 'MarkerFaceColor', 'w');
+    text(tgt.pos(1)+0.1, tgt.pos(2), sprintf('Tgt %d', tgt.id), 'Color', 'w', 'FontWeight', 'bold');
 end
+legend('Ground Truth');
+
+%% 5c. Visualisation Erreur de Phase et Théorie
+figure('Name', 'Estimation vs Théorie (Phase Error)', 'Position', [200, 200, 800, 500]);
+hold on;
+% 1. Erreur PGA (Alignée approximativement)
+plot(x_vec, rad2deg(Phase_Error), 'b-', 'LineWidth', 1.5, 'DisplayName', 'Estimée (PGA, img)');
+
+% 2. Erreur Théorique (Calculée à partir des mouvements)
+if exist('Errors_RPY', 'var') && ~isempty(Errors_RPY)
+    % Calcul de l'erreur de phase induite pour le canal 1 sur la cible 1
+    % On simule ce que le mouvement induit comme changement de distance RX
+    
+    phi_theory = zeros(1, N_pulses);
+    Tgt_Pos = cfg.scene.targets(1).pos; % Utiliser la première cible
+    % Assurer que Tgt_Pos est un vecteur ligne (1x3) comme Pos_Radar
+    if iscolumn(Tgt_Pos), Tgt_Pos = Tgt_Pos'; end
+
+    % Offsets nominaux (doivent correspondre à la simulation)
+    drx = cfg.antenna.rx_spacing_mm / 1000;
+    Off0 = [-drx/2, 0, 0]; 
+    
+    fprintf('Calcul erreur théorique (Target 1, Canal 1)...\n');
+    for m = 1:N_pulses
+        % Vecteur vue
+        P_Radar = Pos_Radar(m, :);
+        LOS = Tgt_Pos - P_Radar;
+        u_LOS = LOS / norm(LOS);
+        
+        % Rotation
+        r = Errors_RPY(m,1); p = Errors_RPY(m,2); y = Errors_RPY(m,3);
+        Rx = [1 0 0; 0 cos(r) -sin(r); 0 sin(r) cos(r)];
+        Ry = [cos(p) 0 sin(p); 0 1 0; -sin(p) 0 cos(p)];
+        Rz = [cos(y) -sin(y) 0; sin(y) cos(y) 0; 0 0 1];
+        R_tot = Rz * Ry * Rx;
+        
+        % Offset Réel
+        Off_Real = (R_tot * Off0')';
+        
+        % Erreur de distance RX (Projection sur LOS)
+        d_err = dot(u_LOS, Off_Real - Off0);
+        
+        % Erreur de phase (2pi / lambda * d_err)
+        % Note: Bistatique. Tx ne bouge pas (CG). Seul Rx bouge.
+        phi_theory(m) = (2*pi/lambda) * d_err;
+    end
+    
+    % On plot en fonction de la position X du radar pour aligner avec l'image
+    plot(Pos_Radar(:,1), rad2deg(phi_theory), 'r--', 'LineWidth', 1.2, 'DisplayName', 'Théorique (Motion Ch1)');
+    title('Comparaison Erreur Phase: Estimée vs Théorique (Motion)');
+else
+    title('Erreur de Phase Estimée par PGA');
+end
+
+xlabel('Position Azimut (m)');
+ylabel('Erreur de Phase (Degrés)');
+legend('Location', 'best');
+grid on;
+xlim([X_min X_max]);
+
+%% 6. Enregistrement des résultats
+fprintf('Sauvegarde de l''image complexe dans output/out.mat...\n');
+save('output/out.mat', 'Image_Accumulator', 'Image_PGA', 'x_vec', 'y_vec');
+fprintf('Sauvegarde terminée.\n');

@@ -167,7 +167,7 @@ end
 toc;
  [Image_PGA, Phase_Error] = pga_autofocus(Image_Accumulator, 5);
 %% 5. Visualisation et Analyse
-figure('Name', 'K-MC4 SAR Image', 'Position', [100, 100, 800, 600]);
+figure('Name', 'K-MC4 SAR Image');
 
 % Affichage de l'image (Magnitude Logarithmique)
 % On normalise par rapport au max pour avoir des dB
@@ -175,7 +175,7 @@ Img_Mag = abs(Image_Accumulator);
 Img_dB = 20*log10(Img_Mag / max(Img_Mag(:)));
 
 imagesc(x_vec, y_vec, Img_dB);
-axis xy; axis equal;
+axis xy; axis equal; axis tight;
 colormap('jet');
 caxis([-100 0]); % Dynamique de 40 dB pour voir les lobes secondaires
 colorbar;

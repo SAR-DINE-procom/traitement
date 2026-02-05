@@ -12,6 +12,7 @@ sys.path.append(parent_dir)
 from tools.openTdms import get_sar_data
 from backprojection import Backprojection
 from autofocus import pga_autofocus
+from processing.detection.k_cfar import k_cfar_detector
 
 def main():
     # Paths
@@ -120,6 +121,15 @@ def main():
     output_fig = os.path.join(parent_dir, 'output', 'sar_image_python.png')
     plt.savefig(output_fig)
     print(f"Image saved to {output_fig}")
+    
+    # 8. K-CFAR Detection
+    # image_amp = abs(bpa_autofocused) chargé depuis .mat
+    detection_map, threshold_map = k_cfar_detector(image_amp)
+
+    plt.figure()
+    plt.imshow(detection_map, cmap='gray')
+    plt.title("K-CFAR Detection Map")
+    plt.colorbar()
     plt.show()
 
 if __name__ == "__main__":

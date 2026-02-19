@@ -30,8 +30,8 @@ fprintf('Paramètres chargés:\n- FC: %.2f GHz\n- Pente: %.2e Hz/s\n- Canaux: %d
 % On définit une zone centrée sur les cibles définies dans le JSON
 % Vous pouvez ajuster ces limites manuellement selon votre scène
 X_min = 0.0; X_max = cfg.platform.track_length_m;  % Axe Azimut (Cross-range) - Centré sur le target à 1.0m
-Y_min = 0.0;  Y_max = 10.0; % Axe Distance (Range) - Zoom sur 5-20m
-Res_Grid = 0.1;            % Résolution de la grille (5 cm) - DEPRECATED
+Y_min = 0.0;  Y_max = 5.0; % Axe Distance (Range) - Zoom sur 5-20m
+Res_Grid = 0.05;            % Résolution de la grille (5 cm) - DEPRECATED
 
 % Calcul des Pas de Grille (Grid Sampling Steps) basés sur la physique
 % 1. Axe Distance : Dépend de la Bande Passante (B)

@@ -136,7 +136,7 @@ def main():
     # 3. Générer une erreur de phase complexe (Mouvements de la plateforme)
     # On simule une combinaison de sinus et de polynômes pour mimer le roulis/tangage
     t = np.linspace(-1, 1, n_azimuth)
-    phase_error = 5.0 * t**2 + 2.0 * t**3 + 1.5 * np.sin(2 * np.pi * 3 * t)
+    phase_error = 5.0 * t**2 #+ 2.0 * t**3 + 1.5 * np.sin(2 * np.pi * 3 * t)
     error_signal = np.exp(1j * phase_error)
     
     # Appliquer l'erreur dans le domaine Doppler
@@ -149,25 +149,35 @@ def main():
     corrected_image, estimated_phase = pga_autofocus(sar_blurred_spatial, iterations=10)
 
     # 5. Visualisation
-    plt.figure(figsize=(12, 8))
+    plt.figure(figsize=(12, 12))
 
-    plt.subplot(2, 2, 1)
+    plt.subplot(3, 2, 1)
     plt.title("Image Originale (Théorique)")
     plt.imshow(np.abs(image_pure), cmap='gray', aspect='auto')
 
-    plt.subplot(2, 2, 2)
-    plt.title("Image Dégradée (Erreurs de mouvement)")
-    plt.imshow(np.abs(sar_blurred_spatial), cmap='gray', aspect='auto')
-
-    plt.subplot(2, 2, 3)
-    plt.title("Image Corrigée (PGA)")
-    plt.imshow(np.abs(corrected_image), cmap='gray', aspect='auto')
-
-    plt.subplot(2, 2, 4)
+    plt.subplot(3, 2, 2)
     plt.title("Comparaison des Phases")
     plt.plot(phase_error - np.mean(phase_error), label="Erreur Réelle", linestyle='--')
     plt.plot(estimated_phase, label="Estimation PGA")
     plt.legend()
+
+    plt.subplot(3, 2, 3)
+    plt.title("Image Dégradée (Erreurs de mouvement)")
+    plt.imshow(np.abs(sar_blurred_spatial), cmap='gray', aspect='auto')
+
+    plt.subplot(3, 2, 4)
+    plt.title("Phase Image Dégradée")
+    plt.imshow(np.angle(sar_blurred_spatial), cmap='jet', aspect='auto')
+    plt.colorbar()
+
+    plt.subplot(3, 2, 5)
+    plt.title("Image Corrigée (PGA)")
+    plt.imshow(np.abs(corrected_image), cmap='gray', aspect='auto')
+
+    plt.subplot(3, 2, 6)
+    plt.title("Phase Image Corrigée")
+    plt.imshow(np.angle(corrected_image), cmap='jet', aspect='auto')
+    plt.colorbar()
 
     plt.tight_layout()
     plt.show()

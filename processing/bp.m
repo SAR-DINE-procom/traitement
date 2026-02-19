@@ -30,8 +30,8 @@ fprintf('Paramètres chargés:\n- FC: %.2f GHz\n- Pente: %.2e Hz/s\n- Canaux: %d
 % On définit une zone centrée sur les cibles définies dans le JSON
 % Vous pouvez ajuster ces limites manuellement selon votre scène
 X_min = 0.0; X_max = cfg.platform.track_length_m;  % Axe Azimut (Cross-range) - Centré sur le target à 1.0m
-Y_min = 0.0;  Y_max = 25.0; % Axe Distance (Range) - Zoom sur 5-20m
-Res_Grid = 0.05;            % Résolution de la grille (5 cm) - DEPRECATED
+Y_min = 0.0;  Y_max = 10.0; % Axe Distance (Range) - Zoom sur 5-20m
+Res_Grid = 0.1;            % Résolution de la grille (5 cm) - DEPRECATED
 
 % Calcul des Pas de Grille (Grid Sampling Steps) basés sur la physique
 % 1. Axe Distance : Dépend de la Bande Passante (B)
@@ -40,7 +40,7 @@ Step_Range = c / (2 * B);
 
 % 2. Axe Azimut : Dépend de la tailel de l'antenne
 % KCM4 =~ 10cm
-Step_Azimuth = 0.05; 
+Step_Azimuth = 0.5; 
 
 %x_vec = X_min : Step_Azimuth : X_max;
 %y_vec = Y_min : Step_Range : Y_max;
@@ -165,7 +165,7 @@ for m = 1:N_pulses
     end
 end
 toc;
- [Image_PGA, Phase_Error] = pga_autofocus(Image_Accumulator, 5);
+[Image_PGA, Phase_Error] = pga_autofocus(Image_Accumulator, 5);
 %% 5. Visualisation et Analyse
 figure('Name', 'K-MC4 SAR Image');
 
@@ -277,6 +277,17 @@ ylabel('Erreur de Phase (Degrés)');
 legend('Location', 'best');
 grid on;
 xlim([X_min X_max]);
+
+%% 5d. Visualisation de la Phase de l'image
+figure('Name', 'Phase de l''image SAR', 'Position', [250, 250, 800, 600]);
+imagesc(x_vec, y_vec, angle(Image_Accumulator));
+axis xy; axis equal; axis tight;
+colormap('hsv'); % Colormap cyclique adaptée pour la phase (-pi à pi)
+colorbar;
+title('Phase de l''image SAR Reconstruite');
+xlabel('Azimut / Cross-Range [m]');
+ylabel('Distance / Range [m]');
+grid on;
 
 %% 6. Enregistrement des résultats
 fprintf('Sauvegarde de l''image complexe dans output/out.mat...\n');

@@ -1,8 +1,8 @@
 {
   "radar": {
     "description": "RFBeam K-MC4 Twin",
-    "fc": 24.125e9,
-    "bandwidth": 2e9,
+    "fc": 4.5e9,
+    "bandwidth": 100e6,
     "tx_power_dbm": 20,
     "noise_figure_db": 12,
     "adc_sample_rate": 250e3,
@@ -10,8 +10,8 @@
   },
   "modulation": {
     "type": "triangular",
-    "sweep_time": 10e-3,
-    "start_frequency": 24.0e9,
+    "sweep_time": 0.25e-5,
+    "start_frequency": 4.5e9,
     "slope_linearity_error": 0.0
   },
   "antenna": {
@@ -22,10 +22,10 @@
     "sidelobe_level_db": -20
   },
   "platform": {
-    "velocity_mps": 0.05,
-    "track_length_m": 2.0,
+    "velocity_mps": 200,
+    "track_length_m": 600,
     "start_position": [0.0, 0.0, 1.0],
-    "prf": 100
+    "prf": 300
   },
   "scene": {
     "targets": [

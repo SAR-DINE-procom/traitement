@@ -32,7 +32,9 @@ Pos_Radar(:,3) = cfg.platform.start_position(3);
 if ~isfield(cfg, 'motion'), cfg.motion.enabled = false; end
 
 Errors_RPY = zeros(N_pulses, 3); % [Roll, Pitch, Yaw]
+ 
 if cfg.motion.enabled
+    disp('in')
     fprintf('Génération des erreurs d''attitude (Gauss-Markov)...\n');
     dt_slow = 1 / cfg.platform.prf;
     beta = exp(-dt_slow / cfg.motion.tau_corr);
@@ -41,10 +43,11 @@ if cfg.motion.enabled
     for m = 2:N_pulses
         Errors_RPY(m,:) = beta * Errors_RPY(m-1,:) + sqrt(1 - beta^2) * (randn(1,3) .* sigma_rad);
     end
-    Errors_RPY = zeros(N_pulses, 3); % [Roll, Pitch, Yaw]
-    for i = 1:N_pulses
-        Errors_RPY(i, 1) = sin(2 * pi * i); 
-    end 
+
+    % Errors_RPY = zeros(N_pulses, 3); % [Roll, Pitch, Yaw]
+    % for m = 2:N_pulses
+    %     Errors_RPY(m,1) = ((m - N_pulses / 2)* 0.02)^2;
+    % end
 end
 
 %fprintf('Paramètres:\n- Freq: %.2f GHz\n- Pulses: %d\n- Erreurs Attitude: %s\n',...
@@ -75,6 +78,7 @@ for m = 1:N_pulses
     % Rotation des offsets d'antenne (pour l'interférométrie)
     Off1 = (R_total * Offset_Rx1_Nominal')';
     Off2 = (R_total * Offset_Rx2_Nominal')';
+ 
 
     Signal_Acc_UP_Rx1 = zeros(1, N_samples); Signal_Acc_UP_Rx2 = zeros(1, N_samples);
     Signal_Acc_DOWN_Rx1 = zeros(1, N_samples); Signal_Acc_DOWN_Rx2 = zeros(1, N_samples);
@@ -135,7 +139,7 @@ toc;
 % 1. Paramétrage de la puissance du sol (Clutter)
 % Ajustez ce facteur pour rendre le sol plus ou moins brillant par rapport aux cibles
 % Une valeur de 1e-4 est souvent un bon point de départ par rapport à des cibles ponctuelles
-Clutter_Power = 1e-4; 
+Clutter_Power = 0; 
 
 if isfield(cfg, 'scene') && isfield(cfg.scene, 'clutter_power')
     Clutter_Power = cfg.scene.clutter_power;

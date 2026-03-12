@@ -4,7 +4,9 @@ from scipy.io import savemat
 import os
 
 import matplotlib.pyplot as plt
-
+"""
+    Code prenant en entrée les donées de sorties de la KMC4 pour l'adapter au BP
+"""
 def prepare_data_for_bp(npz_file, csv_file, output_mat_path="output/KMC4_RawData.mat"):
     print(f"--- Lecture des données ---")
     print(f"Radar : {npz_file}")
@@ -106,11 +108,8 @@ def prepare_data_for_bp(npz_file, csv_file, output_mat_path="output/KMC4_RawData
     savemat(output_mat_path, mat_dict)
     print(f"--- Succès ! Fichier généré : {output_mat_path} ---")
 
-# ==========================================
-# EXÉCUTION
-# ==========================================
+
 if __name__ == "__main__":
-    # Remplace par les vrais noms de tes fichiers générés par l'IHM
     FICHIER_NPZ = "tools/test_grand_triedre_loin_moyen_plus_proche_20260305_104722_004.npz" 
     FICHIER_CSV = "tools/test_grand_triedre_loin_moyen_plus_proche_20260305_104722_004.csv"
     

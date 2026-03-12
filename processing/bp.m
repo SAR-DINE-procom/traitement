@@ -21,12 +21,7 @@ T_sweep = cfg.modulation.sweep_time;
 Fs = cfg.radar.adc_sample_rate;
 K_slope = B / T_sweep;
 
-fc = 24.09e9; 
-lambda = c / fc;
-B = 180e6;
-T_sweep = 7e-3;
-Fs = 125e3;
-K_slope = B / T_sweep;
+
 
 [N_samples, N_pulses, N_channels] = size(RawData_UP);
 
@@ -74,26 +69,6 @@ RawData_UP = RawData_UP - mean(RawData_UP, 1);
 
 N_FFT = 2^nextpow2(N_samples * 4); 
 RC_Data_UP = fft(RawData_UP.* Win_Mat, N_FFT, 1);
-% % --- FILTRAGE DU SELF-MIXING (Couplage Antenne) SÉCURISÉ ---
-% R_min_masque = 2.5; 
-% F_min_masque = K_slope * (2 * R_min_masque / c);
-
-% % 1. On utilise floor() pour forcer un entier et on calcule l'indice
-% Bin_masque = floor((F_min_masque / (Fs / N_FFT)) + 1);
-
-% % 2. SÉCURITÉ : on s'assure que l'indice reste entre 1 et la moitié de la FFT
-% Bin_masque = max(1, min(Bin_masque, floor(N_FFT / 2)));
-
-% % 3. Mise à zéro des basses fréquences (positives)
-% RC_Data_UP(1:Bin_masque, :, :) = 0;
-
-% % 4. Mise à zéro des basses fréquences (négatives, à la fin du spectre FFT)
-% idx_fin = (N_FFT - Bin_masque + 1);
-% RC_Data_UP(idx_fin:end, :, :) = 0; 
-
-% fprintf('Self-mixing supprimé sous %.2f mètres (Bins 1 à %d et %d à %d).\n', ...
-% R_min_masque, Bin_masque, idx_fin, N_FFT);
-
  freq_axis = (0:N_FFT-1) * (Fs / N_FFT);
 
 

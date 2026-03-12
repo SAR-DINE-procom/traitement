@@ -1,249 +1,202 @@
-% filepath: c:\code\py\sar\simulator\simulator.m
-function simulator(configPath)
-    % --- Path and Argument Management ---
-    currentScriptPath = fileparts(mfilename('fullpath'));
-    addpath(fullfile(currentScriptPath, '..')); % Add parent dir for helpers
+%% K-MC4 SAR Raw Data Simulator (Digital Twin) - Attitude Error Extension
+clear; clc; close all;
+
+%% 1. Chargement et Parsing de la Configuration
+fprintf('--- Initialisation de la Simulation K-MC4 ---\n');
+fid = fopen('conf/config3.json');
+raw = fread(fid, inf);
+str = char(raw');
+fclose(fid);
+cfg = jsondecode(str);
+
+% Constantes Physiques
+c = 3e8;
+
+% Paramètres Dérivés
+lambda_c = c / cfg.radar.fc;
+K_slope = cfg.radar.bandwidth / cfg.modulation.sweep_time; 
+N_samples = round(cfg.modulation.sweep_time * cfg.radar.adc_sample_rate);
+dt = 1 / cfg.radar.adc_sample_rate;
+time_axis = (0:N_samples-1) * dt;
+
+% Calcul de la trajectoire
+dx = cfg.platform.velocity_mps / cfg.platform.prf;
+N_pulses = round(cfg.platform.track_length_m / dx);
+Pos_Radar = zeros(N_pulses, 3);
+Pos_Radar(:,1) = linspace(0, cfg.platform.track_length_m, N_pulses) + cfg.platform.start_position(1);
+Pos_Radar(:,2) = cfg.platform.start_position(2);
+Pos_Radar(:,3) = cfg.platform.start_position(3);
+
+%% --- NOUVEAU : Génération des erreurs Gauss-Markov ---
+% On initialise à 0 par défaut si les champs n'existent pas dans le JSON
+if ~isfield(cfg, 'motion'), cfg.motion.enabled = false; end
+
+Errors_RPY = zeros(N_pulses, 3); % [Roll, Pitch, Yaw]
+ 
+if cfg.motion.enabled
+    disp('in')
+    fprintf('Génération des erreurs d''attitude (Gauss-Markov)...\n');
+    dt_slow = 1 / cfg.platform.prf;
+    beta = exp(-dt_slow / cfg.motion.tau_corr);
+    sigma_rad = deg2rad([cfg.motion.std_roll_deg, cfg.motion.std_pitch_deg, cfg.motion.std_yaw_deg]);
     
-    if nargin < 1
-        configPath = fullfile(currentScriptPath, '..', 'conf', 'config.json');
+    for m = 2:N_pulses
+        Errors_RPY(m,:) = beta * Errors_RPY(m-1,:) + sqrt(1 - beta^2) * (randn(1,3) .* sigma_rad);
     end
 
-    % --- Load Configuration ---
-    c = physconst('LightSpeed');
-    [fc, rangeResolution, crossRangeResolution, bw, prf, aperture, tpd, fs, speed, flightDuration, maxRange, targetsPosition, motionErrors] = getParams(configPath); 
-
-    % --- Radar System Setup ---
-    waveform = phased.LinearFMWaveform('SampleRate', fs, 'PulseWidth', tpd, 'PRF', prf, 'SweepBandwidth', bw, SweepInterval = 'Symmetric');
-    %waveform = phased.FMCWWaveform('SampleRate', fs, 'SweepTime', 1/prf, 'SweepBandwidth', bw, 'SweepDirection', 'Triangle');
-    plot(waveform)
-    radarPlatform = phased.Platform('InitialPosition', [0;0;2], 'Velocity', [0; speed; 0]);
-    
-    antenna = phased.CosineAntennaElement('FrequencyRange', [20e9 26e9]);
-    antennaGain = aperture2gain(aperture, c/fc); 
-    
-    transmitter = phased.Transmitter('PeakPower', 50e3, 'Gain', antennaGain);
-    radiator = phased.Radiator('Sensor', antenna, 'OperatingFrequency', fc, 'PropagationSpeed', c);
-    collector = phased.Collector('Sensor', antenna, 'PropagationSpeed', c, 'OperatingFrequency', fc);
-    receiver = phased.ReceiverPreamp('SampleRate', fs, 'NoiseFigure', 3); % , 'Gain', 20 + antennaGain
-    channel = phased.FreeSpace('PropagationSpeed', c, 'OperatingFrequency', fc, 'SampleRate', fs, 'TwoWayPropagation', true);
-
-    % --- Target Setup ---
-    if isempty(targetsPosition)
-        warning('No targets in JSON. Using default.');
-        targetpos = [2; 0; 0];
-    else
-        targetpos = targetsPosition;
-    end
-    
-    [~, numTargets] = size(targetpos);
-    targetvel = zeros(3, numTargets); 
-    target = phased.RadarTarget('OperatingFrequency', fc, 'MeanRCS', ones(1, numTargets));
-    pointTargets = phased.Platform('InitialPosition', targetpos, 'Velocity', targetvel);
-
-    % --- Ground Truth Visualization ---
-    figure(1); h = axes;
-    plot(targetpos(2,:), targetpos(1,:), '*g', 'MarkerSize', 10); 
-    set(h, 'Ydir', 'reverse');
-    xlim([-10 10]); 
-    minR = min(targetpos(1,:));
-    maxR = max(targetpos(1,:));
-    ylim([max(0, minR-5) maxR+5]); 
-    title('Ground Truth'); ylabel('Range'); xlabel('Cross-Range');
-
-    % --- Simulation Loop ---
-    slowTime = 1/prf;
-    numpulses = flightDuration/slowTime + 1;
-    maxTime = (2*maxRange/c) + tpd; 
-    truncrangesamples = ceil(maxTime * fs);
-    
-    refangle = zeros(1, size(targetpos, 2));
-    rxsig = zeros(truncrangesamples, numpulses);
-    
-    ideal_path = zeros(3, numpulses);
-    real_path = zeros(3, numpulses);
-
-    for ii = 1:numpulses
-        % 1. Update Kinematics
-        [radarpos_ideal, radarvel] = radarPlatform(slowTime);
-        [targetpos, targetvel] = pointTargets(slowTime);
-        
-        % 2. Apply Motion Errors
-        perturbation = randn(3,1) .* motionErrors; 
-        %perturbation = 2 * sin(2 * pi * ii) ^ 2; 
-        
-        perturbation_x = 0.001 * sin(2*pi*2*ii);
-        radarpos_real = radarpos_ideal + perturbation;
-        
-        % 3. Store Paths
-        ideal_path(:, ii) = radarpos_ideal;
-        real_path(:, ii) = radarpos_real;
-        
-        % 4. Physics Simulation (using Real Position)
-        [targetRange, targetAngle] = rangeangle(targetpos, radarpos_real);
-        
-        sig = waveform();
-        sig = sig(1:truncrangesamples);
-        sig = transmitter(sig);
-        
-        % Force spotlight/tracking mode (comment out for stripmap)
-        %targetAngle(1,:) = refangle;
-        %fprintf('Pulse %d: targetAngle(1,1) = %.4f rad\n', ii, targetAngle(1,1));
-        sig = radiator(sig, targetAngle);
-        sig = channel(sig, radarpos_real, targetpos, radarvel, targetvel);
-        sig = target(sig);
-        sig = collector(sig, targetAngle);
-        rxsig(:,ii) = receiver(sig);
-
-    end
-    figure(2);
-    plot(abs(rxsig(:, 1)));
-    title('First Pulse Response');
-    grid on;
-    hold on; 
-    % show() removed as it is not a valid MATLAB command 
-    % --- Visualization: Raw Data ---
-    figure(3);
-    imagesc(real(rxsig));
-    title('Raw Radar Data (Real Part)');
-    xlabel('Pulse Index (Slow Time)');
-    ylabel('Fast Time Sample');
-    colorbar;
-
-    % --- Signal Processing ---
-    % 1. Pulse Compression
-    %pulseCompression = phased.RangeResponse('RangeMethod', 'Matched filter', 'PropagationSpeed', c, 'SampleRate', fs);
-    %matchingCoeff = getMatchedFilter(waveform);
-    %[cdata, rnggrid] = pulseCompression(rxsig, matchingCoeff);
-    ref_sig = waveform();
-    ref_sig = ref_sig(1:size(rxsig, 1));
-    % 1. Dechirp (Mélange avec la référence)
-    dechirpedSig = dechirp(rxsig, ref_sig); 
-
-    % 2. Range Processing (FFT)
-    % La distance est proportionnelle à la fréquence de battement
-    Nfft = 2^nextpow2(size(dechirpedSig, 1));
-    cdata_fft = fft(dechirpedSig, Nfft,1);
-    
-    % 3. Calcul de la grille de distance (Range Grid)
-    % Formule FMCW : f_beat = (2 * Slope * R) / c  => R = (c * f_beat) / (2 * Slope)
-    slope = bw * prf; % Pente du chirp pour calcul de distance plus tard
-    freq_bins = (0:Nfft-1) * (fs/Nfft);
-    rnggrid = (c * freq_bins) / (2 * slope);
-    
-    % On ne garde que la partie positive et pertinente du spectre
-    half_spectrum = floor(Nfft/2);
-    cdata = cdata_fft(1:half_spectrum, :);
-    rnggrid = rnggrid(1:half_spectrum).'; %
-
-    % --- Visualization: Range Compressed Data ---
-    figure(4);
-    % Calcul de l'axe azimutal pour l'affichage
-    [~, numPulses] = size(cdata);
-    azimuthDist = (0:numPulses-1) * (speed/prf); 
-    imagesc(azimuthDist, rnggrid, abs(cdata));
-    title('Range Compressed Data (Envelope)');
-    xlabel('Cross-Range (m)');
-    ylabel('Range (m)');
-    axis xy;
-    ylim([0 10]); % Zoom sur la zone proche (cibles)
-    colorbar;
-
-    figure(5);
-    plot(rnggrid, abs(cdata(:,1)));
-    title('Range Compressed Signal (1st Pulse)');
-    xlabel('Range (m)');
-    ylabel('Amplitude');
-    grid on;
-    xlim([0 20]);
-
-    % 2. Backprojection Algorithm
-    fastTime = (0:1/fs:(truncrangesamples-1)/fs);
-    
-    % Appel de la fonction modifiée
-    bpa_processed = helperBackProjection(cdata, rnggrid, fastTime, fc, fs, prf, speed, crossRangeResolution, c);
-
-    % --- Autofocus (PGA) ---
-    addpath(fullfile(currentScriptPath, '..', 'processing'));
-    fprintf('Running PGA Autofocus...\n');
-    [bpa_autofocused, phase_error] = pga_autofocus(bpa_processed, 20);
-
-    % --- Visualization ---
-    
-    % Il faut recréer les axes utilisés dans helperBackProjection pour l'affichage
-    gridStep = 0.025;
-    rangeLims = [0 10];
-    crossRangeLims = [0 10];
-    
-    imgRangeAxis = rangeLims(1):gridStep:rangeLims(2);
-    imgCrossAxis = crossRangeLims(1):gridStep:crossRangeLims(2);
-    
-    [~, numPulses] = size(cdata);
-    azimuthDist = (0:numPulses-1) * (speed/prf); 
-    
-    figure(6); % New figure for the final image
-    subplot(1,2,1);
-    imagesc(imgCrossAxis, imgRangeAxis, abs(bpa_processed));
-    title('SAR Image (Backprojection)');
-    xlabel('Cross-range (m)');
-    ylabel('Range (m)');
-    set(gca, 'YDir', 'normal'); 
-    axis xy; 
-    axis equal; 
-    ylim([0 10]); % Zoom on near field
-    xlim([0 max(azimuthDist)]);
-    colorbar;
-
-    subplot(1,2,2);
-    imagesc(imgCrossAxis, imgRangeAxis, abs(bpa_autofocused));
-    title('SAR Image (PGA Autofocused)');
-    xlabel('Cross-range (m)');
-    ylabel('Range (m)');
-    set(gca, 'YDir', 'normal'); 
-    axis xy; 
-    axis equal; 
-    ylim([0 10]); % Zoom on near field
-    xlim([0 max(azimuthDist)]);
-    colorbar;
-
-    figure(7);
-    plot(phase_error);
-    title('Estimated Phase Error');
-    xlabel('Azimuth Index');
-    ylabel('Phase (rad)');
-
-    % --- Export Data ---
-    if ~exist('output', 'dir'), mkdir('output'); end
-    
-    % 1. Export standard .mat (pour Python/MATLAB)
-    save('output/out.mat', 'cdata', 'real_path', 'ideal_path', 'rxsig');
-
-    % 2. Export TDMS (Pour compatibilité NI DAQmx)
-    tdmsFileName = fullfile(pwd, 'output', 'simulation_raw.tdms');
-    
-    try
-        if exist(tdmsFileName, 'file')
-            delete(tdmsFileName);
-        end
-
-        % Verification mémoire (Heuristique simple)
-        s = whos('rxsig');
-        % Limite arbitraire (ex: 200MB pour rxsig -> ~800MB requis pour la conversion)
-        if s.bytes > 200*1024*1024 
-            warning('Signal trop volumineux (>200MB) pour export TDMS direct. Ignoré pour éviter OOM.');
-        else
-            raw_vector = rxsig(:); 
-            timeVec = seconds((0:length(raw_vector)-1)' / fs);
-            
-            T = timetable(timeVec, real(raw_vector), imag(raw_vector), ...
-                'VariableNames', {'Dev1_ai0_I', 'Dev1_ai1_Q'});
-            
-            tdmswrite(tdmsFileName, T);
-            fprintf('Export TDMS réussi : %s\n', tdmsFileName);
-        end
-        
-    catch ME
-        warning('Impossible d''écrire le fichier TDMS.');
-        fprintf('Erreur : %s\n', ME.message);
-        fprintf('Les données brute sont disponibles dans output/out.mat\n');
-    end
+    % Errors_RPY = zeros(N_pulses, 3); % [Roll, Pitch, Yaw]
+    % for m = 2:N_pulses
+    %     Errors_RPY(m,1) = ((m - N_pulses / 2)* 0.02)^2;
+    % end
 end
+
+%fprintf('Paramètres:\n- Freq: %.2f GHz\n- Pulses: %d\n- Erreurs Attitude: %s\n',...
+%    cfg.radar.fc/1e9, N_pulses, regexprep(num2str(cfg.motion.enabled),'1','OUI','0','NON'));
+
+%% 2. Initialisation des Matrices de Données
+RawData_UP   = complex(zeros(N_samples, N_pulses, 2)); 
+RawData_DOWN = complex(zeros(N_samples, N_pulses, 2));
+
+%% 3. Boucle de Simulation (Slow Time)
+fprintf('Lancement de la simulation (Stop-and-Go)...\n');
+tic;
+
+d_rx = cfg.antenna.rx_spacing_mm / 1000;
+Offset_Rx1_Nominal = [-d_rx/2, 0, 0];
+Offset_Rx2_Nominal = [ d_rx/2, 0, 0];
+
+for m = 1:N_pulses
+    P_Tx_Global = Pos_Radar(m, :);
+    
+    % --- NOUVEAU : Calcul de la rotation pour cette impulsion ---
+    r = Errors_RPY(m,1); p = Errors_RPY(m,2); y = Errors_RPY(m,3);
+    Rx = [1 0 0; 0 cos(r) -sin(r); 0 sin(r) cos(r)];
+    Ry = [cos(p) 0 sin(p); 0 1 0; -sin(p) 0 cos(p)];
+    Rz = [cos(y) -sin(y) 0; sin(y) cos(y) 0; 0 0 1];
+    R_total = Rz * Ry * Rx; % Matrice de rotation globale
+
+    % Rotation des offsets d'antenne (pour l'interférométrie)
+    Off1 = (R_total * Offset_Rx1_Nominal')';
+    Off2 = (R_total * Offset_Rx2_Nominal')';
+ 
+
+    Signal_Acc_UP_Rx1 = zeros(1, N_samples); Signal_Acc_UP_Rx2 = zeros(1, N_samples);
+    Signal_Acc_DOWN_Rx1 = zeros(1, N_samples); Signal_Acc_DOWN_Rx2 = zeros(1, N_samples);
+    
+    for k = 1:length(cfg.scene.targets)
+        P_Tgt = cfg.scene.targets(k).pos';
+        Vec_R = P_Tgt - P_Tx_Global;
+        Dist_Tx = norm(Vec_R);
+        
+        % --- NOUVEAU : Projection dans le repère local tourné ---
+        % Nécessaire pour le gain d'antenne (le radar "voit" la cible sous un autre angle)
+        Vec_R_Local = R_total' * Vec_R'; 
+        
+        angle_az = atan2(Vec_R_Local(1), Vec_R_Local(2)); 
+        angle_el = atan2(Vec_R_Local(3), sqrt(Vec_R_Local(1)^2 + Vec_R_Local(2)^2));
+        
+        % Gain et Amplitude
+        Gain_Az = exp(-4*log(2) * (angle_az / deg2rad(cfg.antenna.beamwidth_azimuth_deg))^2);
+        Gain_El = exp(-4*log(2) * (angle_el / deg2rad(cfg.antenna.beamwidth_elevation_deg))^2);
+        Gain_Total_Lin = 10^(cfg.antenna.gain_dbi/10) * Gain_Az * Gain_El;
+        Amp_k = sqrt(cfg.scene.targets(k).rcs) * Gain_Total_Lin / (Dist_Tx^2);
+        
+        % Distances Rx avec Offsets tournés
+        Dist_Rx1 = Dist_Tx + dot(Vec_R/Dist_Tx, Off1);
+        Dist_Rx2 = Dist_Tx + dot(Vec_R/Dist_Tx, Off2);
+        
+        tau_1 = (Dist_Tx + Dist_Rx1) / c;
+        tau_2 = (Dist_Tx + Dist_Rx2) / c;
+        
+        Phi_fixe_1 = 2 * pi * cfg.radar.fc * tau_1;
+        Phi_fixe_2 = 2 * pi * cfg.radar.fc * tau_2;
+        fb_1 = K_slope * tau_1;
+        fb_2 = K_slope * tau_2;
+        
+        % Synthèse
+        Sig_Up_1 = Amp_k * exp(1j * (2*pi*fb_1*time_axis + Phi_fixe_1));
+        Sig_Up_2 = Amp_k * exp(1j * (2*pi*fb_2*time_axis + Phi_fixe_2));
+        Sig_Down_1 = Amp_k * exp(1j * (2*pi*(-fb_1)*time_axis + Phi_fixe_1));
+        Sig_Down_2 = Amp_k * exp(1j * (2*pi*(-fb_2)*time_axis + Phi_fixe_2));
+        
+        Signal_Acc_UP_Rx1 = Signal_Acc_UP_Rx1 + Sig_Up_1;
+        Signal_Acc_UP_Rx2 = Signal_Acc_UP_Rx2 + Sig_Up_2;
+        Signal_Acc_DOWN_Rx1 = Signal_Acc_DOWN_Rx1 + Sig_Down_1;
+        Signal_Acc_DOWN_Rx2 = Signal_Acc_DOWN_Rx2 + Sig_Down_2;
+    end
+    
+    RawData_UP(:, m, 1) = Signal_Acc_UP_Rx1;
+    RawData_UP(:, m, 2) = Signal_Acc_UP_Rx2;
+    RawData_DOWN(:, m, 1) = Signal_Acc_DOWN_Rx1;
+    RawData_DOWN(:, m, 2) = Signal_Acc_DOWN_Rx2;
+end
+toc;
+
+%% --- NOUVEAU : Ajout de la Réverbération de Sol (Modèle Statistique) ---
+% On simule le sol comme une infinité de diffuseurs aléatoires (Speckle)
+% Cela revient à ajouter un bruit Gaussien Complexe aux données brutes.
+
+% 1. Paramétrage de la puissance du sol (Clutter)
+% Ajustez ce facteur pour rendre le sol plus ou moins brillant par rapport aux cibles
+% Une valeur de 1e-4 est souvent un bon point de départ par rapport à des cibles ponctuelles
+Clutter_Power = 0; 
+
+if isfield(cfg, 'scene') && isfield(cfg.scene, 'clutter_power')
+    Clutter_Power = cfg.scene.clutter_power;
+end
+
+fprintf('Génération du Clutter de sol (Modèle Rayleigh, Puissance: %.1e)...\n', Clutter_Power);
+
+% 2. Génération du signal de sol (Bruit Gaussien Complexe)
+% Note : Pour de l'InSAR (2 antennes), le sol est "vu" presque identiquement par les deux antennes.
+% On génère donc une "Vérité Terrain" de sol unique.
+Ground_Reflectivity = sqrt(Clutter_Power/2) * (randn(N_samples, N_pulses) + 1j * randn(N_samples, N_pulses));
+
+% 3. Ajout aux données brutes (Superposition linéaire)
+% On l'ajoute aux deux canaux Rx. 
+% Note: Dans un modèle plus avancé, on ajouterait un déphasage géométrique entre Rx1 et Rx2.
+RawData_UP(:,:,1)   = RawData_UP(:,:,1)   + Ground_Reflectivity;
+RawData_UP(:,:,2)   = RawData_UP(:,:,2)   + Ground_Reflectivity;
+RawData_DOWN(:,:,1) = RawData_DOWN(:,:,1) + Ground_Reflectivity;
+RawData_DOWN(:,:,2) = RawData_DOWN(:,:,2) + Ground_Reflectivity;
+
+fprintf('Clutter ajouté avec succès.\n');
+
+%% 4. Visualisation
+figure('Name', 'K-MC4 SAR Simulator - Analyse Globale', 'Color', 'w', 'Position', [100, 100, 1200, 800]);
+
+% 1. Erreurs temporelles (Attitude)
+subplot(2,2,1);
+t_slow = (0:N_pulses-1) / cfg.platform.prf;
+plot(t_slow, rad2deg(Errors_RPY), 'LineWidth', 1.2);
+grid on; title('Erreurs d''Attitude (Gauss-Markov)');
+xlabel('Temps (s)'); ylabel('Angle (deg)');
+legend('Roulis', 'Tangage', 'Lacet');
+
+% 2. Données Brutes (Partie Réelle) - Historique de phase
+subplot(2,2,2);
+imagesc(1:N_pulses, time_axis*1000, real(RawData_UP(:,:,1)));
+colormap(gca, 'gray'); colorbar;
+title('Données Brutes (Partie Réelle) - Franges SAR');
+xlabel('Numéro Impulsion'); ylabel('Temps rapide (ms)');
+
+% 3. RTI (Range-Time Intensity)
+subplot(2,2,3);
+f = (cfg.radar.adc_sample_rate/1000) * (0:(N_samples/2))/N_samples;
+fft_raw = fft(RawData_UP(:,:,1));
+imagesc(1:N_pulses, f, db(abs(fft_raw(1:length(f), :))));
+ylim([0 max(f)/2]); colormap(gca, 'jet'); colorbar;
+title('RTI (Spectre Fast-Time vs Slow-Time)');
+xlabel('Numéro Impulsion'); ylabel('Fréquence (kHz)');
+
+% 4. Profil de Fréquence de Battement (Moyenné)
+subplot(2,2,4);
+mean_fft_profile = mean(abs(fft_raw(1:length(f), :)), 2);
+plot(f, db(mean_fft_profile), 'LineWidth', 1.5, 'Color', '#0072BD');
+grid on;
+title('Profil de Fréquence de Battement (Moyenné)');
+xlabel('Fréquence (kHz)'); ylabel('Amplitude Moyenne (dB)');
+xlim([0 max(f)/2]);
+
+save('output/KMC4_RawData.mat', 'RawData_UP', 'RawData_DOWN', 'cfg', 'Errors_RPY', 'Pos_Radar');
+fprintf('Sauvegarde terminée (avec Erreurs et Trajectoire).\n');

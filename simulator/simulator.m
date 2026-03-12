@@ -180,12 +180,17 @@ colormap(gca, 'gray'); colorbar;
 title('Données Brutes (Partie Réelle) - Franges SAR');
 xlabel('Numéro Impulsion'); ylabel('Temps rapide (ms)');
 
+% --- Limites statiques en dB pour l'affichage ---
+c_min_db = -40; % À ajuster selon la puissance de vos cibles
+c_max_db = 50;  % À ajuster selon la puissance de vos cibles
+
 % 3. RTI (Range-Time Intensity)
 subplot(2,2,3);
 f = (cfg.radar.adc_sample_rate/1000) * (0:(N_samples/2))/N_samples;
 fft_raw = fft(RawData_UP(:,:,1));
 imagesc(1:N_pulses, f, db(abs(fft_raw(1:length(f), :))));
-ylim([0 max(f)]); colormap(gca, 'jet'); colorbar;
+clim([c_min_db c_max_db]); % Fixe la dynamique des couleurs (utiliser caxis() sur les vieux MATLAB)
+ylim([0 max(f)/2]); colormap(gca, 'jet'); colorbar;
 title('RTI (Spectre Fast-Time vs Slow-Time)');
 xlabel('Numéro Impulsion'); ylabel('Fréquence (kHz)');
 
@@ -193,10 +198,11 @@ xlabel('Numéro Impulsion'); ylabel('Fréquence (kHz)');
 subplot(2,2,4);
 mean_fft_profile = mean(abs(fft_raw(1:length(f), :)), 2);
 plot(f, db(mean_fft_profile), 'LineWidth', 1.5, 'Color', '#0072BD');
+ylim([c_min_db c_max_db]); % Fixe la dynamique de l'axe vertical
 grid on;
 title('Profil de Fréquence de Battement (Moyenné)');
 xlabel('Fréquence (kHz)'); ylabel('Amplitude Moyenne (dB)');
-xlim([0 max(f)]);
+xlim([0 max(f)/2]);
 
 save('output/KMC4_RawData.mat', 'RawData_UP', 'RawData_DOWN', 'cfg', 'Errors_RPY', 'Pos_Radar');
 fprintf('Sauvegarde terminée (avec Erreurs et Trajectoire).\n');

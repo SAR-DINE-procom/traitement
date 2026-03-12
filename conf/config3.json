@@ -2,7 +2,7 @@
   "radar": {
     "description": "RFBeam K-MC4 Twin",
     "fc": 24.125e9,
-    "bandwidth": 2e9,
+    "bandwidth": 250e6,
     "tx_power_dbm": 20,
     "noise_figure_db": 12,
     "adc_sample_rate": 250e3,
@@ -35,7 +35,8 @@
         "rcs": 26.0,
         "description": "Cible Principale"
       }
-    ]
+    ],
+    "clutter_power": 1e-6
   },
   "motion": {
     "enabled": false,

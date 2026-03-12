@@ -163,23 +163,40 @@ RawData_DOWN(:,:,2) = RawData_DOWN(:,:,2) + Ground_Reflectivity;
 fprintf('Clutter ajouté avec succès.\n');
 
 %% 4. Visualisation
-figure('Name', 'K-MC4 Motion Errors Analysis', 'Color', 'w');
+figure('Name', 'K-MC4 SAR Simulator - Analyse Globale', 'Color', 'w', 'Position', [100, 100, 1200, 800]);
 
-% Subplot 1: Erreurs temporelles
-subplot(2,1,1);
+% 1. Erreurs temporelles (Attitude)
+subplot(2,2,1);
 t_slow = (0:N_pulses-1) / cfg.platform.prf;
 plot(t_slow, rad2deg(Errors_RPY), 'LineWidth', 1.2);
-grid on; title('Erreurs d''Attitude (Processus de Gauss-Markov)');
+grid on; title('Erreurs d''Attitude (Gauss-Markov)');
 xlabel('Temps (s)'); ylabel('Angle (deg)');
-legend('Roulis (Roll)', 'Tangage (Pitch)', 'Lacet (Yaw)');
+legend('Roulis', 'Tangage', 'Lacet');
 
-% Subplot 2: Impact sur le Range-Doppler (RTI)
-subplot(2,1,2);
+% 2. Données Brutes (Partie Réelle) - Historique de phase
+subplot(2,2,2);
+imagesc(1:N_pulses, time_axis*1000, real(RawData_UP(:,:,1)));
+colormap(gca, 'gray'); colorbar;
+title('Données Brutes (Partie Réelle) - Franges SAR');
+xlabel('Numéro Impulsion'); ylabel('Temps rapide (ms)');
+
+% 3. RTI (Range-Time Intensity)
+subplot(2,2,3);
 f = (cfg.radar.adc_sample_rate/1000) * (0:(N_samples/2))/N_samples;
-imagesc(1:N_pulses, f, db(abs(fft(RawData_UP(:,:,1)))));
-ylim([0 max(f)/2]); colormap('jet'); colorbar;
-title('RTI (Données Brutes avec Erreurs de Phase/Gain)');
+fft_raw = fft(RawData_UP(:,:,1));
+imagesc(1:N_pulses, f, db(abs(fft_raw(1:length(f), :))));
+ylim([0 max(f)/2]); colormap(gca, 'jet'); colorbar;
+title('RTI (Spectre Fast-Time vs Slow-Time)');
 xlabel('Numéro Impulsion'); ylabel('Fréquence (kHz)');
+
+% 4. Profil de Fréquence de Battement (Moyenné)
+subplot(2,2,4);
+mean_fft_profile = mean(abs(fft_raw(1:length(f), :)), 2);
+plot(f, db(mean_fft_profile), 'LineWidth', 1.5, 'Color', '#0072BD');
+grid on;
+title('Profil de Fréquence de Battement (Moyenné)');
+xlabel('Fréquence (kHz)'); ylabel('Amplitude Moyenne (dB)');
+xlim([0 max(f)/2]);
 
 save('output/KMC4_RawData.mat', 'RawData_UP', 'RawData_DOWN', 'cfg', 'Errors_RPY', 'Pos_Radar');
 fprintf('Sauvegarde terminée (avec Erreurs et Trajectoire).\n');

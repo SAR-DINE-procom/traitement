@@ -3,7 +3,7 @@
 %  et forme une image SAR focalisée en utilisant l'algorithme Time-Domain Backprojection
 %  adapté pour le FMCW (Frequency Domain Interpolation).
 
- clear; clc; close all;
+%clear; clc; close all;
 
 %% 1. Chargement des Données et Configuration
 fprintf('--- Chargement des données K-MC4 ---\n');

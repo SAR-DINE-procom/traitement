@@ -185,7 +185,7 @@ subplot(2,2,3);
 f = (cfg.radar.adc_sample_rate/1000) * (0:(N_samples/2))/N_samples;
 fft_raw = fft(RawData_UP(:,:,1));
 imagesc(1:N_pulses, f, db(abs(fft_raw(1:length(f), :))));
-ylim([0 max(f)/2]); colormap(gca, 'jet'); colorbar;
+ylim([0 max(f)]); colormap(gca, 'jet'); colorbar;
 title('RTI (Spectre Fast-Time vs Slow-Time)');
 xlabel('Numéro Impulsion'); ylabel('Fréquence (kHz)');
 
@@ -196,7 +196,7 @@ plot(f, db(mean_fft_profile), 'LineWidth', 1.5, 'Color', '#0072BD');
 grid on;
 title('Profil de Fréquence de Battement (Moyenné)');
 xlabel('Fréquence (kHz)'); ylabel('Amplitude Moyenne (dB)');
-xlim([0 max(f)/2]);
+xlim([0 max(f)]);
 
 save('output/KMC4_RawData.mat', 'RawData_UP', 'RawData_DOWN', 'cfg', 'Errors_RPY', 'Pos_Radar');
 fprintf('Sauvegarde terminée (avec Erreurs et Trajectoire).\n');

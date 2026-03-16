@@ -41,8 +41,8 @@ X_min = min(Pos_Radar(:,1)); X_max = max(Pos_Radar(:,1));
 disp('X'); 
 disp(X_min); 
 disp(X_max); 
-Y_min = 0;  Y_max = 10; 
-Res_Grid = 0.05;            
+Y_min = 0;  Y_max = 5.0; 
+Res_Grid = 0.01;            
 
 Step_Range = c / (2 * B); 
 Step_Azimuth = 0.05; 
@@ -122,7 +122,7 @@ for m = 1:N_pulses
         val_high = Spectrum_Slice(idx_floor + 1);
         
         Signal_Interp(Valid_Pixels) = val_low.* (1 - idx_frac) + val_high.* idx_frac;
-        Phase_Corr = exp(1j * 2 * pi * fc * (R_Bistatic(Valid_Pixels) / c));
+        Phase_Corr = exp(-1j * 2 * pi * fc * (R_Bistatic(Valid_Pixels) / c));
         Image_Accumulator(Valid_Pixels) = Image_Accumulator(Valid_Pixels) + Signal_Interp(Valid_Pixels).* Phase_Corr;
     end
 end
@@ -136,7 +136,7 @@ Image_Degradee = Image_Accumulator;
 fprintf('Lancement du PGA sur l''image dégradée...\n');
 % On passe l'image dégradée au PGA. Vous pouvez ajuster la fenêtre initiale (ex: 200)
 floor(Nx / 2) 
-[Image_PGA, Phase_Error_Est, RMS] = pga_autofocus(Image_Degradee, 15);
+[Image_PGA, Phase_Error_Est, RMS] = pga_autofocus(Image_Degradee, 10);
 
 %% 5. Visualisation et Analyse
 figure("Name", 'Convergence RMS'); 

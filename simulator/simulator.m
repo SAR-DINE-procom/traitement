@@ -18,6 +18,7 @@ K_slope = cfg.radar.bandwidth / cfg.modulation.sweep_time;
 N_samples = round(cfg.modulation.sweep_time * cfg.radar.adc_sample_rate);
 dt = 1 / cfg.radar.adc_sample_rate;
 time_axis = (0:N_samples-1) * dt;
+pitch = deg2rad(cfg.platform.pitch_deg);
 
 % Calcul de la trajectoire
 dx = cfg.platform.velocity_mps / cfg.platform.prf;
@@ -69,9 +70,12 @@ for m = 1:N_pulses
     P_Tx_Global = Pos_Radar(m, :);
     
     % --- NOUVEAU : Calcul de la rotation pour cette impulsion ---
+    % Correction des axes : Le radar regarde vers l'axe Y.
+    % - Pour s'incliner vers le haut/bas (tangage/pitch nominal pour regarder le sol), 
+    %   il faut tourner autour de l'axe X (orthogonal à la ligne de visée Y).
     r = Errors_RPY(m,1); p = Errors_RPY(m,2); y = Errors_RPY(m,3);
-    Rx = [1 0 0; 0 cos(r) -sin(r); 0 sin(r) cos(r)];
-    Ry = [cos(p) 0 sin(p); 0 1 0; -sin(p) 0 cos(p)];
+    Rx = [1 0 0; 0 cos(p + pitch) -sin(p + pitch); 0 sin(p + pitch) cos(p + pitch)];
+    Ry = [cos(r) 0 sin(r); 0 1 0; -sin(r) 0 cos(r)];
     Rz = [cos(y) -sin(y) 0; sin(y) cos(y) 0; 0 0 1];
     R_total = Rz * Ry * Rx; % Matrice de rotation globale
 

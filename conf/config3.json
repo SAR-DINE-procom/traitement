@@ -25,7 +25,8 @@
     "velocity_mps": 0.05,
     "track_length_m": 2.0,
     "start_position": [0.0, 0.0, 1.0],
-    "prf": 100
+    "prf": 100,
+    "pitch_deg": -2.86
   },
   "scene": {
     "targets": [
@@ -36,7 +37,7 @@
         "description": "Cible Principale"
       }
     ],
-    "clutter_power": 1e-6
+    "clutter_power": 0.0
   },
   "motion": {
     "enabled": false,
